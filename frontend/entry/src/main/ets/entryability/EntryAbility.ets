@@ -19,16 +19,19 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
+    hilog.info(DOMAIN, 'testTag', '开始加载页面...');
 
-    windowStage.loadContent('pages/Index', (err) => {
-      if (err.code) {
-        hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
-        return;
-      }
-      hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
-    });
+    try {
+      windowStage.loadContent('pages/Login', (err) => {
+        if (err && err.code) {
+          hilog.error(DOMAIN, 'testTag', '⚠️ 页面加载失败！错误码: %{public}d, 原因: %{public}s', err.code, err.message);
+          return;
+        }
+        hilog.info(DOMAIN, 'testTag', '✅ 页面加载成功！uiContent 已挂载。');
+      });
+    } catch (exception) {
+      hilog.error(DOMAIN, 'testTag', '💥 loadContent 发生致命同步异常: %{public}s', JSON.stringify(exception));
+    }
   }
 
   onWindowStageDestroy(): void {
