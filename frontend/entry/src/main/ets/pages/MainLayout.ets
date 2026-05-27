@@ -8,9 +8,9 @@ interface TabItem {
   subTitle: string;
 }
 
-@Entry  // 🌟 因为直接路由跳转，所以它现在是一个独立的 Entry
+@Entry
 @Component
-struct MainLayout {
+export struct MainLayout {
   @State currentIndex: number = 0;
 
   private tabItems: TabItem[] = [
@@ -20,12 +20,14 @@ struct MainLayout {
   ];
 
   build() {
-    // 🌟 剥离 NavDestination，直接用 Row 左右分栏
+    // 采用最原始稳健的 Row 布局作为主架构容器
     Row() {
-      // 左侧侧边栏
+      // 左侧一体化导航控制列
       Column() {
-        Text("SYSTEM").fontSize(11).fontColor('#00E5FF').letterSpacing(3).margin({ top: 40, bottom: 4 })
-        Text("智能中控台").fontSize(20).fontWeight(FontWeight.Bold).fontColor('#FFFFFF').margin({ bottom: 40 })
+        Text("SYSTEM")
+          .fontSize(11).fontColor('#00E5FF').letterSpacing(3).margin({ top: 40, bottom: 4 })
+        Text("智能中控台")
+          .fontSize(20).fontWeight(FontWeight.Bold).fontColor('#FFFFFF').margin({ bottom: 40 })
 
         ForEach(this.tabItems, (item: TabItem, index: number) => {
           Column() {
@@ -35,7 +37,9 @@ struct MainLayout {
                   .fontColor(this.currentIndex === index ? '#00E5FF' : '#A0AAB5')
                 Text(item.subTitle).fontSize(9).fontColor(this.currentIndex === index ? '#00E5FF' : '#506070').margin({ top: 2 })
               }.alignItems(HorizontalAlign.Start)
+
               Blank()
+
               if (this.currentIndex === index) {
                 Circle({ width: 6, height: 6 }).fill('#00E5FF').shadow({ radius: 5, color: '#00E5FF' })
               }
@@ -45,21 +49,25 @@ struct MainLayout {
             .border({ width: this.currentIndex === index ? 1 : 0, color: 'rgba(0, 229, 255, 0.15)' })
           }
           .width('88%').margin({ bottom: 12 })
-          .onClick(() => { this.currentIndex = index; })
+          .onClick(() => {
+            this.currentIndex = index;
+          })
         })
       }
       .width(240).height('100%').backgroundColor('#07090C')
       .border({ width: { right: 1 }, color: 'rgba(255, 255, 255, 0.05)' })
 
-      // 右侧内容区
+      // 右侧内容视窗，按需独立挂载对应的功能模块
       Column() {
-        if (this.currentIndex === 0) HomePage()
-        else if (this.currentIndex === 1) ControlPage()
-        else if (this.currentIndex === 2) ProfilePage()
+        if (this.currentIndex === 0) {
+          HomePage()
+        } else if (this.currentIndex === 1) {
+          ControlPage()
+        } else if (this.currentIndex === 2) {
+          ProfilePage()
+        }
       }
-      .layoutWeight(1)
-      .height('100%')
-      .backgroundColor('#0A0C10')
+      .layoutWeight(1).height('100%').backgroundColor('#0A0C10')
     }
     .width('100%')
     .height('100%')

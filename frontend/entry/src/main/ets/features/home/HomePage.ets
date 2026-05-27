@@ -1,4 +1,4 @@
-
+// frontend/entry/src/main/ets/features/home/HomePage.ets
 @Component
 export struct HomePage {
   @State currentTime: string = '';
@@ -6,14 +6,16 @@ export struct HomePage {
   @State aiLog: string = 'SYSTEM STANDBY';
   @State aiLogColor: string = '#00E5FF';
 
+  // 门禁状态管控
+  @State isDoorLocked: boolean = true;
+
   aboutToAppear() {
     setInterval(() => {
       let date = new Date();
       this.currentTime = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
-      this.cpuLoad = Math.floor(Math.random() * 20) + 20; // 模拟 CPU 负载动效
+      this.cpuLoad = Math.floor(Math.random() * 20) + 20;
     }, 1000);
 
-    // 模拟 AI 联动触发
     setTimeout(() => {
       this.aiLog = '[AI SCENE] 检测到人体活动，已自动开启客厅主灯';
       this.aiLogColor = '#FF1744';
@@ -22,7 +24,7 @@ export struct HomePage {
 
   build() {
     Column({ space: 20 }) {
-      // 1. 顶部状态栏 (钢铁侠 HUD 风格)
+      // 1. 顶部状态栏
       Row() {
         Column() {
           Text('全屋生态态势感知中枢').fontSize(24).fontWeight(FontWeight.Bold).fontColor('#FFF')
@@ -45,12 +47,25 @@ export struct HomePage {
           Stack() {
             Column() {
               Row() { this.RoomGrid('主卧区', '26℃', '45%'); this.RoomGrid('客厅中枢', '24℃', '55%') }.height('50%')
-              Row() { this.RoomGrid('厨房安防', '环境正常', '40%'); this.RoomGrid('玄关门禁', '已设防', '60%') }.height('50%')
+              Row() {
+                this.RoomGrid('厨房安防', '环境正常', '40%');
+                // 门禁交互卡片
+                Column() {
+                  Text('玄关门禁').fontSize(16).fontColor('rgba(255,255,255,0.2)').fontWeight(FontWeight.Bold)
+                  Text(this.isDoorLocked ? '已设防' : '已解锁').fontSize(12).fontColor(this.isDoorLocked ? '#00E5FF' : '#FF1744').margin({ top: 8 })
+                }
+                .width('60%').height('100%').border({ width: 1, color: 'rgba(255,255,255,0.03)' }).justifyContent(FlexAlign.Center)
+                .onClick(() => {
+                  this.isDoorLocked = !this.isDoorLocked;
+                  this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
+                  this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
+                })
+              }.height('50%')
             }.width('100%').height(280)
-            // 设备动态锚点
+
             this.DeviceAnchor('美的空调', 20, 20, '#00E5FF', true)
             this.DeviceAnchor('人体感应', 65, 30, '#FF1744', true)
-            this.DeviceAnchor('智能锁', 80, 75, '#00FF00', false)
+            this.DeviceAnchor('智能锁', 80, 75, this.isDoorLocked ? '#00FF00' : '#FF1744', !this.isDoorLocked)
           }.width('100%')
         }
         .width('45%').padding(20).backgroundColor('rgba(255,255,255,0.02)')
@@ -76,7 +91,7 @@ export struct HomePage {
 
       Blank()
 
-      // 4. AI 智能联动触发底栏 (赛博朋克警报风格)
+      // 4. AI 智能联动触发底栏
       Row() {
         Text('⚡ AI ENGINE EVENT:').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.aiLogColor).margin({ right: 12 })
         Text(this.aiLog).fontSize(14).fontColor('#FFF').fontFamily('monospace')
