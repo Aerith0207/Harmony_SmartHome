@@ -1,5 +1,63 @@
 // frontend/entry/src/main/ets/features/home/HomePage.ets
 @Component
+export struct PulseDeviceAnchor {
+  @Prop name: string;
+  @Prop x: number;
+  @Prop y: number;
+  @Prop color: string;
+  @Prop @Watch('onActiveChange') active: boolean;
+
+  @State pulseScale: number = 1;
+  @State pulseOpacity: number = 1;
+
+  onActiveChange() {
+    if (this.active) {
+      // 增强版：振幅更大、带有透明度消散的无限脉冲
+      animateTo({
+        duration: 1000,
+        curve: Curve.EaseInOut,
+        iterations: -1,
+        playMode: PlayMode.Alternate
+      }, () => {
+        this.pulseScale = 1.8; // 放大到1.8倍
+        this.pulseOpacity = 0.3; // 边缘变透明
+      });
+    } else {
+      animateTo({
+        duration: 400,
+        curve: Curve.EaseInOut,
+        iterations: 1
+      }, () => {
+        this.pulseScale = 1.0;
+        this.pulseOpacity = 1.0;
+      });
+    }
+  }
+
+  aboutToAppear() {
+    this.onActiveChange();
+  }
+
+  build() {
+    Row({ space: 8 }) {
+      Circle({ width: 10, height: 10 })
+        .fill(this.color)
+        .shadow({ radius: this.active ? 20 : 0, color: this.color })
+        .scale({ x: this.pulseScale, y: this.pulseScale })
+        .opacity(this.pulseOpacity) // 绑定透明度动效
+        .animation({ duration: 400, curve: Curve.EaseInOut })
+      Text(this.name).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#FFF')
+    }
+    .position({ x: `${this.x}%`, y: `${this.y}%` })
+    .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+    .backgroundColor('rgba(0,0,0,0.7)')
+    .borderRadius(20)
+    .border({ width: 1, color: 'rgba(255,255,255,0.1)' })
+    .backdropBlur(10)
+  }
+}
+
+@Component
 export struct HomePage {
   @State currentTime: string = '';
   @State cpuLoad: number = 32;
@@ -20,18 +78,22 @@ export struct HomePage {
       this.cpuLoad = Math.floor(Math.random() * 20) + 20;
 
       // 图表数据动态滚动逻辑
-      this.cryptoTrafficData.shift();
-      this.cryptoTrafficData.push(Math.floor(Math.random() * 80) + 20);
+      animateTo({ duration: 800, curve: Curve.Linear }, () => {
+        this.cryptoTrafficData.shift();
+        this.cryptoTrafficData.push(Math.floor(Math.random() * 80) + 20);
 
-      if (Math.random() > 0.3) {
-        this.tempTrendData.shift();
-        this.tempTrendData.push(Math.floor(Math.random() * 30) + 45);
-      }
+        if (Math.random() > 0.3) {
+          this.tempTrendData.shift();
+          this.tempTrendData.push(Math.floor(Math.random() * 30) + 45);
+        }
+      });
     }, 1000);
 
     setTimeout(() => {
-      this.aiLog = '[AI SCENE] 检测到人体活动，已自动开启客厅主灯';
-      this.aiLogColor = '#FF1744';
+      animateTo({ duration: 500, curve: Curve.EaseInOut }, () => {
+        this.aiLog = '[AI SCENE] 检测到人体活动，已自动开启客厅主灯';
+        this.aiLogColor = '#FF1744';
+      });
     }, 5000);
   }
 
@@ -96,13 +158,17 @@ export struct HomePage {
               .layoutWeight(1).height('100%').border({ width: 1, color: 'rgba(255,255,255,0.03)' })
               .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
               .onClick(() => {
-                this.isDoorLocked = !this.isDoorLocked;
-                this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
-                this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
+                // 🌟 加入门禁开锁的显式动画过渡
+                animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
+                  this.isDoorLocked = !this.isDoorLocked;
+                  this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
+                  this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
+                });
               })
             }.width('100%').layoutWeight(1)
           }
           .width('100%').height(380)
+
         }
         .width('85%').padding(24).backgroundColor('rgba(255,255,255,0.02)')
         .borderRadius(16).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
@@ -124,6 +190,7 @@ export struct HomePage {
       // 4. AI 智能联动触发底栏
       Row() {
         Text('⚡ AI ENGINE EVENT:').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.aiLogColor).margin({ right: 12 })
+          .animation({ duration: 300 }) // 颜色平滑渐变
         Text(this.aiLog).fontSize(14).fontColor('#FFF').fontFamily('monospace')
       }
       .width('100%').height(48).padding({ left: 20 }).backgroundColor('rgba(0,0,0,0.5)')
@@ -185,7 +252,9 @@ export struct HomePage {
   @Builder DeviceTag(name: string, color: string, active: boolean) {
     Row({ space: 6 }) {
       Circle({ width: 6, height: 6 }).fill(color).shadow({ radius: active ? 10 : 0, color: color })
+        .animation({ duration: 300, curve: Curve.EaseInOut }) // 平滑切换
       Text(name).fontSize(11).fontWeight(FontWeight.Bold).fontColor(active ? '#FFF' : 'rgba(255,255,255,0.4)')
+        .animation({ duration: 300 })
     }
     .padding({ left: 10, right: 10, top: 4, bottom: 4 })
     .backgroundColor('rgba(0,0,0,0.4)')
