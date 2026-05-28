@@ -30,9 +30,95 @@ class ACFactory {
   }
 }
 
+// ==========================================
+// 提取出的独立响应式组件 (彻底解决高亮卡死问题)
+// ==========================================
+
+@Component
+struct SubControlBtn {
+  @Prop label: string;
+  @Prop isActive: boolean;
+  @Prop activeColor: string;
+  onClickAction: () => void = () => {};
+
+  hexToRgb(hex: string): string {
+    let r = parseInt(hex.slice(1, 3), 16);
+    let g = parseInt(hex.slice(3, 5), 16);
+    let b = parseInt(hex.slice(5, 7), 16);
+    return `${r}, ${g}, ${b}`;
+  }
+
+  build() {
+    Text(this.label)
+      .fontSize(10).fontWeight(FontWeight.Bold)
+      .fontColor(this.isActive ? this.activeColor : '#666')
+      .padding({ top: 6, bottom: 6, left: 12, right: 12 })
+      .backgroundColor(this.isActive ? `rgba(${this.hexToRgb(this.activeColor)}, 0.1)` : 'rgba(255,255,255,0.02)')
+      .borderRadius(12).border({ width: 1, color: this.isActive ? this.activeColor : 'rgba(255,255,255,0.05)' })
+      .animation({ duration: 300, curve: Curve.EaseInOut }) // 动画加持
+      .onClick(() => this.onClickAction())
+  }
+}
+
+@Component
+struct SceneCard {
+  @Prop title: string;
+  @Prop desc: string;
+  @Prop glowColor: string;
+  @Prop active: boolean;
+  onClickAction: () => void = () => {};
+
+  build() {
+    Row() {
+      Column() {
+        Text(this.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.active ? this.glowColor : '#FFF')
+          .animation({ duration: 300 })
+        Text(this.desc).fontSize(10).fontColor('#8899AA').margin({ top: 4 })
+      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+
+      Toggle({ type: ToggleType.Switch, isOn: this.active })
+        .selectedColor(this.glowColor)
+        .hitTestBehavior(HitTestMode.Block)
+    }
+    .layoutWeight(1).padding(16).backgroundColor('rgba(255,255,255,0.02)')
+    .borderRadius(12).border({ width: 1, color: this.active ? this.glowColor : 'rgba(255,255,255,0.05)' })
+    .animation({ duration: 300, curve: Curve.EaseInOut })
+    .onClick(() => this.onClickAction())
+  }
+}
+
+@Component
+struct DeviceToggle {
+  @Prop name: string;
+  @Prop desc: string;
+  @Prop isOn: boolean;
+  @Prop color: string;
+  toggleAction: (val: boolean) => void = () => {};
+
+  build() {
+    Row() {
+      Row({ space: 12 }) {
+        Circle({ width: 6, height: 6 }).fill(this.isOn ? this.color : '#555').shadow({ radius: this.isOn ? 8 : 0, color: this.color })
+          .animation({ duration: 300, curve: Curve.EaseInOut })
+        Column() {
+          Text(this.name).fontSize(14).fontWeight(FontWeight.Bold).fontColor('#FFF')
+          Text(this.desc).fontSize(10).fontColor('#667788').margin({ top: 2 })
+        }.alignItems(HorizontalAlign.Start)
+      }
+      Blank()
+      Toggle({ type: ToggleType.Switch, isOn: this.isOn })
+        .selectedColor(this.color)
+        .onChange((val: boolean) => this.toggleAction(val))
+    }.width('100%').padding({ top: 8, bottom: 8 })
+  }
+}
+
+// ==========================================
+// 主页面容器
+// ==========================================
+
 @Component
 export struct ControlPage {
-  // --- 空调状态 ---
   @State targetTemp: number = 24;
   @State currentTemp: number = 26;
   @State isAcOn: boolean = true;
@@ -40,20 +126,18 @@ export struct ControlPage {
   @State acMode: string = 'COOL';
   @State fanSpeed: string = 'AUTO';
 
-  // --- 场景与设备状态 ---
   @State activeScene: string = '回家模式';
   @State isMainLightOn: boolean = false;
   @State isCurtainOpen: boolean = true;
   @State isPurifierOn: boolean = true;
 
-  // 模拟发送底层硬件指令
   sendCommand(payload: string) {
     hilog.info(0x0000, 'SmartHome', `[MQTT Mock] 发送硬件指令: ${payload}`);
   }
 
   build() {
     Column() {
-      Blank() // 顶部动态推挤，实现绝对垂直居中
+      Blank()
 
       Column({ space: 24 }) {
         // --- 标题与协议选择区 ---
@@ -78,95 +162,109 @@ export struct ControlPage {
         // --- 核心控制交互区 ---
         Row({ space: 24 }) {
 
-          // ==========================================
-          // 区域 1：深度定制的暖通空调面板 (左侧 45%)
-          // ==========================================
+          // 区域 1：深度定制的暖通空调面板
           Column() {
             Text('HVAC Climate Control').fontSize(12).fontColor('#00E5FF').letterSpacing(2).margin({ bottom: 20 })
 
-            // 温度设定圆环
+            // 温度设定圆环 (增强光晕)
             Stack() {
               Circle({ width: 200, height: 200 }).fill('transparent').stroke('rgba(0, 229, 255, 0.1)').strokeWidth(1)
-              Circle({ width: 180, height: 180 }).fill('rgba(0,0,0,0.6)').shadow({ radius: 30, color: this.isAcOn ? 'rgba(0, 229, 255, 0.15)' : 'transparent' })
+              Circle({ width: 180, height: 180 }).fill('rgba(0,0,0,0.6)')
+              // 增强点：阴影发光半径提升至80，颜色更浓
+                .shadow({ radius: this.isAcOn ? 80 : 0, color: this.isAcOn ? 'rgba(0, 229, 255, 0.4)' : 'transparent' })
+                .animation({ duration: 600, curve: Curve.FastOutSlowIn })
 
               Column() {
                 Text('TARGET').fontSize(10).fontColor('#666')
                 Text(`${this.targetTemp}℃`).fontSize(48).fontWeight(FontWeight.Bolder).fontColor(this.isAcOn ? '#00E5FF' : '#555').margin({ top: 4, bottom: 4 })
+                  .animation({ duration: 400, curve: Curve.EaseInOut })
                 Text(this.isAcOn ? `MODE: ${this.acMode}` : 'OFFLINE').fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744')
+                  .animation({ duration: 400 })
               }
             }.margin({ bottom: 20 })
 
-            // 环境反馈比对
+            // 环境反馈比对 (保持不变)
             Row({ space: 24 }) {
               Column({ space: 4 }) { Text('CURRENT').fontSize(10).fontColor('#666'); Text(`${this.currentTemp}℃`).fontSize(16).fontColor('#FFF').fontWeight(FontWeight.Bold) }.alignItems(HorizontalAlign.Center)
               Column({ space: 4 }) { Text('HUMIDITY').fontSize(10).fontColor('#666'); Text('45%').fontSize(16).fontColor('#FFF').fontWeight(FontWeight.Bold) }.alignItems(HorizontalAlign.Center)
             }.margin({ bottom: 24 })
 
-            // 温度加减与电源控制
+            // 温度加减与电源控制 (增强切换动效)
             Row({ space: 16 }) {
               Button('-').width(50).height(50).fontSize(20).backgroundColor('rgba(255,255,255,0.05)').fontColor('#FFF')
                 .onClick(() => {
-                  if(this.isAcOn) { this.targetTemp -= 1; this.sendCommand(ACFactory.getAC(this.currentBrand).getTempCommand(this.targetTemp)); }
+                  if(this.isAcOn) {
+                    animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp -= 1; });
+                    this.sendCommand(ACFactory.getAC(this.currentBrand).getTempCommand(this.targetTemp));
+                  }
                 })
-              Button(this.isAcOn ? 'POWER OFF' : 'POWER ON').width(110).height(50).fontSize(14).fontWeight(FontWeight.Bold).backgroundColor(this.isAcOn ? '#FF1744' : '#1976D2')
+              Button(this.isAcOn ? 'POWER OFF' : 'POWER ON').width(110).height(50).fontSize(14).fontWeight(FontWeight.Bold)
+                .backgroundColor(this.isAcOn ? '#FF1744' : '#1976D2')
+                // 增强点：电源按钮颜色的过渡时间延长
+                .animation({ duration: 600, curve: Curve.EaseOut })
                 .onClick(() => {
-                  this.isAcOn = !this.isAcOn; this.sendCommand(ACFactory.getAC(this.currentBrand).getPowerCommand(this.isAcOn));
+                  animateTo({ duration: 600, curve: Curve.FastOutSlowIn }, () => {
+                    this.isAcOn = !this.isAcOn;
+                  });
+                  let cmd = ACFactory.getAC(this.currentBrand).getPowerCommand(this.isAcOn);
+                  this.sendCommand(cmd);
                 })
               Button('+').width(50).height(50).fontSize(20).backgroundColor('rgba(255,255,255,0.05)').fontColor('#FFF')
                 .onClick(() => {
-                  if(this.isAcOn) { this.targetTemp += 1; this.sendCommand(ACFactory.getAC(this.currentBrand).getTempCommand(this.targetTemp)); }
+                  if(this.isAcOn) {
+                    animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp += 1; });
+                    this.sendCommand(ACFactory.getAC(this.currentBrand).getTempCommand(this.targetTemp));
+                  }
                 })
             }.margin({ bottom: 20 })
 
-            // 风速与模式切换器
+            // 🌟 修正：现在调用的是独立的 @Component
             Row({ space: 12 }) {
-              this.SubControlBtn('COOL', this.acMode === 'COOL' && this.isAcOn, '#00E5FF', () => this.acMode = 'COOL')
-              this.SubControlBtn('HEAT', this.acMode === 'HEAT' && this.isAcOn, '#FF9100', () => this.acMode = 'HEAT')
-              this.SubControlBtn('DRY', this.acMode === 'DRY' && this.isAcOn, '#7B61FF', () => this.acMode = 'DRY')
+              SubControlBtn({ label: 'COOL', isActive: this.acMode === 'COOL' && this.isAcOn, activeColor: '#00E5FF', onClickAction: () => { animateTo({duration:300}, () => this.acMode = 'COOL') } })
+              SubControlBtn({ label: 'HEAT', isActive: this.acMode === 'HEAT' && this.isAcOn, activeColor: '#FF9100', onClickAction: () => { animateTo({duration:300}, () => this.acMode = 'HEAT') } })
+              SubControlBtn({ label: 'DRY', isActive: this.acMode === 'DRY' && this.isAcOn, activeColor: '#7B61FF', onClickAction: () => { animateTo({duration:300}, () => this.acMode = 'DRY') } })
               Text('|').fontColor('rgba(255,255,255,0.2)').margin({ left: 4, right: 4 })
-              this.SubControlBtn('FAN: ' + this.fanSpeed, this.isAcOn, '#FFF', () => {
-                this.fanSpeed = this.fanSpeed === 'AUTO' ? 'LOW' : (this.fanSpeed === 'LOW' ? 'HIGH' : 'AUTO');
-              })
+              SubControlBtn({ label: 'FAN: ' + this.fanSpeed, isActive: this.isAcOn, activeColor: '#FFF', onClickAction: () => {
+                animateTo({duration:300}, () => {
+                  this.fanSpeed = this.fanSpeed === 'AUTO' ? 'LOW' : (this.fanSpeed === 'LOW' ? 'HIGH' : 'AUTO');
+                })
+              }})
             }.width('100%').justifyContent(FlexAlign.Center)
 
           }
           .layoutWeight(45).height('100%').padding(24).backgroundColor('rgba(255,255,255,0.02)')
           .borderRadius(20).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
 
-          // ==========================================
-          // 区域 2：场景矩阵与设备群控 (右侧 55%)
-          // ==========================================
+          // 区域 2：场景矩阵与设备群控
           Column({ space: 24 }) {
 
-            // --- 2x2 场景网格 ---
             Column({ space: 12 }) {
               Text('Smart Scenes').fontSize(12).fontColor('#00E5FF').letterSpacing(2).alignSelf(ItemAlign.Start)
               Row({ space: 12 }) {
-                this.SceneCard('回家模式', '联动灯光/空调', '#00E5FF', this.activeScene === '回家模式', () => this.activeScene = '回家模式')
-                this.SceneCard('离家模式', '断电/开启安防', '#FF1744', this.activeScene === '离家模式', () => this.activeScene = '离家模式')
+                SceneCard({ title: '回家模式', desc: '联动灯光/空调', glowColor: '#00E5FF', active: this.activeScene === '回家模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '回家模式'; }) } })
+                SceneCard({ title: '离家模式', desc: '断电/开启安防', glowColor: '#FF1744', active: this.activeScene === '离家模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '离家模式'; }) } })
               }.width('100%')
               Row({ space: 12 }) {
-                this.SceneCard('睡眠模式', '熄灯/空调静音', '#7B61FF', this.activeScene === '睡眠模式', () => this.activeScene = '睡眠模式')
-                this.SceneCard('观影模式', '氛围灯/关窗帘', '#FF9100', this.activeScene === '观影模式', () => this.activeScene = '观影模式')
+                SceneCard({ title: '睡眠模式', desc: '熄灯/空调静音', glowColor: '#7B61FF', active: this.activeScene === '睡眠模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '睡眠模式'; }) } })
+                SceneCard({ title: '观影模式', desc: '氛围灯/关窗帘', glowColor: '#FF9100', active: this.activeScene === '观影模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '观影模式'; }) } })
               }.width('100%')
             }
 
-            Blank() // 弹性推挤
+            Blank()
 
-            // --- 独立设备群控列表 ---
             Column({ space: 12 }) {
               Text('End-Nodes Direct Link').fontSize(12).fontColor('#00E5FF').letterSpacing(2).alignSelf(ItemAlign.Start)
 
               Column({ space: 8 }) {
-                this.DeviceToggle('客厅主灯', '全彩吸顶灯/继电器', this.isMainLightOn, '#00FF00', (val) => {
+                DeviceToggle({ name: '客厅主灯', desc: '全彩吸顶灯/继电器', isOn: this.isMainLightOn, color: '#00FF00', toggleAction: (val) => {
                   this.isMainLightOn = val; this.sendCommand(`{"device":"light", "cmd":"power", "val": ${val ? 1 : 0}}`);
-                })
-                this.DeviceToggle('智能窗帘', '超静音开合帘电机', this.isCurtainOpen, '#00E5FF', (val) => {
+                }})
+                DeviceToggle({ name: '智能窗帘', desc: '超静音开合帘电机', isOn: this.isCurtainOpen, color: '#00E5FF', toggleAction: (val) => {
                   this.isCurtainOpen = val; this.sendCommand(`{"device":"curtain", "cmd":"open", "val": ${val ? 1 : 0}}`);
-                })
-                this.DeviceToggle('空气净化器', 'HEPA 滤网/负离子', this.isPurifierOn, '#7B61FF', (val) => {
+                }})
+                DeviceToggle({ name: '空气净化器', desc: 'HEPA 滤网/负离子', isOn: this.isPurifierOn, color: '#7B61FF', toggleAction: (val) => {
                   this.isPurifierOn = val; this.sendCommand(`{"device":"purifier", "cmd":"power", "val": ${val ? 1 : 0}}`);
-                })
+                }})
               }
               .width('100%').padding(16).backgroundColor('rgba(255,255,255,0.02)')
               .borderRadius(16).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
@@ -177,65 +275,7 @@ export struct ControlPage {
         }.width('100%').height(540)
       }.width('100%')
 
-      Blank() // 底部动态推挤
-    }.width('100%').height('100%').padding(32)
-  }
-
-  // ==========================================
-  // 组件库 (Builders)
-  // ==========================================
-
-  // 空调面板底部的小控制按钮
-  @Builder SubControlBtn(label: string, isActive: boolean, activeColor: string, onClickAction: () => void) {
-    Text(label)
-      .fontSize(10).fontWeight(FontWeight.Bold)
-      .fontColor(isActive ? activeColor : '#666')
-      .padding({ top: 6, bottom: 6, left: 12, right: 12 })
-      .backgroundColor(isActive ? `rgba(${this.hexToRgb(activeColor)}, 0.1)` : 'rgba(255,255,255,0.02)')
-      .borderRadius(12).border({ width: 1, color: isActive ? activeColor : 'rgba(255,255,255,0.05)' })
-      .onClick(onClickAction)
-  }
-
-  // 🌟 已修复：场景网格卡片 (恢复 Toggle 且支持全卡片点击互斥)
-  @Builder SceneCard(title: string, desc: string, glowColor: string, active: boolean, onClickAction: () => void) {
-    Row() {
-      Column() {
-        Text(title).fontSize(15).fontWeight(FontWeight.Bold).fontColor(active ? glowColor : '#FFF')
-        Text(desc).fontSize(10).fontColor('#8899AA').margin({ top: 4 })
-      }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-
-      // 使用 Toggle 恢复开关视觉，并通过 HitTestMode.Block 将点击事件全部交给外层 Row 接管
-      Toggle({ type: ToggleType.Switch, isOn: active })
-        .selectedColor(glowColor)
-        .hitTestBehavior(HitTestMode.Block)
-    }
-    .layoutWeight(1).padding(16).backgroundColor('rgba(255,255,255,0.02)')
-    .borderRadius(12).border({ width: 1, color: active ? glowColor : 'rgba(255,255,255,0.05)' })
-    .onClick(() => {
-      onClickAction();
-    })
-  }
-
-  // 独立设备控制条
-  @Builder DeviceToggle(name: string, desc: string, isOn: boolean, color: string, toggleAction: (val: boolean) => void) {
-    Row() {
-      Row({ space: 12 }) {
-        Circle({ width: 6, height: 6 }).fill(isOn ? color : '#555').shadow({ radius: isOn ? 8 : 0, color: color })
-        Column() {
-          Text(name).fontSize(14).fontWeight(FontWeight.Bold).fontColor('#FFF')
-          Text(desc).fontSize(10).fontColor('#667788').margin({ top: 2 })
-        }.alignItems(HorizontalAlign.Start)
-      }
       Blank()
-      Toggle({ type: ToggleType.Switch, isOn: isOn }).selectedColor(color).onChange(toggleAction)
-    }.width('100%').padding({ top: 8, bottom: 8 })
-  }
-
-  // 辅助函数：将 Hex 转为 RGB 方便设置透明度
-  hexToRgb(hex: string): string {
-    let r = parseInt(hex.slice(1, 3), 16);
-    let g = parseInt(hex.slice(3, 5), 16);
-    let b = parseInt(hex.slice(5, 7), 16);
-    return `${r}, ${g}, ${b}`;
+    }.width('100%').height('100%').padding(32)
   }
 }
