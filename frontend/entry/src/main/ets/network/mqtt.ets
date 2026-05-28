@@ -21,16 +21,24 @@ export class MqttBusService {
   public init(onConnectedSuccess: () => void): void {
     if (this.isConnected) return;
 
+    //
     try {
+      //   this.client = MqttAsync.createMqtt({
+      //     url: 'tcp://115.175.12.81:1883',
+      //     clientId: `hmos_sh_node_${Date.now()}`,
+      //     persistenceType: 1
+      //   });
       this.client = MqttAsync.createMqtt({
-        url: 'tcp://115.175.12.81:1883',
+        // 🌟 1. 换成全球免费公共测试代理节点
+        url: 'tcp://broker.emqx.io:1883',
         clientId: `hmos_sh_node_${Date.now()}`,
         persistenceType: 1
       });
 
       this.client.connect({
-        userName: 'admin',
-        password: 'public',
+        // 🌟 恢复这两个字段，传入空字符串（或随便填任意字符），专门用来“骗”过 ArkTS 的类型检查
+        userName: '',
+        password: '',
         keepAliveInterval: 60,
         cleanSession: true
       }).then(() => {

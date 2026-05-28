@@ -1,5 +1,7 @@
 // frontend/entry/src/main/ets/features/climate/ControlPage.ets
 import hilog from '@ohos.hilog';
+import { MqttBusService } from '../../network/mqtt';
+import { SmartPayload } from '../../models/DeviceModels';
 
 // ==========================================
 // 架构层：设备控制抽象与工厂模式
@@ -131,8 +133,15 @@ export struct ControlPage {
   @State isCurtainOpen: boolean = true;
   @State isPurifierOn: boolean = true;
 
-  sendCommand(payload: string) {
-    hilog.info(0x0000, 'SmartHome', `[MQTT Mock] 发送硬件指令: ${payload}`);
+  sendCommand(payloadString: string) {
+    hilog.info(0x0000, 'SmartHome', `[MQTT] 准备下发指令: ${payloadString}`);
+    try {
+      // 解析工厂生成的字符串并送入底层的异步通信队列
+      let payloadObj = JSON.parse(payloadString) as SmartPayload;
+      MqttBusService.getInstance().publishCommand(payloadObj);
+    } catch (e) {
+      hilog.error(0x0000, 'SmartHome', '指令解析异常，拦截发送');
+    }
   }
 
   build() {

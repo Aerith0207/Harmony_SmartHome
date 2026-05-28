@@ -1,5 +1,6 @@
 // frontend/entry/src/main/ets/pages/Login.ets
 import router from '@ohos.router';
+import { MqttBusService } from '../network/mqtt'; // 🌟 引入通信服务
 
 @Entry
 @Component
@@ -9,7 +10,6 @@ struct Login {
   @State terminalLog: string = 'SYSTEM: Booting kernel components...';
 
   aboutToAppear() {
-    // 恢复华丽的科技感加载动画
     let intervalId = setInterval(() => {
       this.initProgress += 4;
       if (this.initProgress === 20) {
@@ -22,10 +22,13 @@ struct Login {
         clearInterval(intervalId);
         this.terminalLog = 'CONSOLE READY. STANDBY FOR AGENT OAUTH.';
         setTimeout(() => { this.isInitializing = false; }, 600);
+
+        // 🌟 核心点火指令！在加载到100%时启动底层通信总线
+        MqttBusService.getInstance().init(() => {
+          console.info('MQTT_BUS', '全屋生态总线已成功挂载，准备接收硬件流');
+        });
       }
     }, 100);
-
-    // 注意：MQTT的初始化我们暂时先放着，等UI彻底跑通再加回去
   }
 
   build() {
