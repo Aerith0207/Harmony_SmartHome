@@ -9,11 +9,24 @@ export struct HomePage {
   // 门禁状态管控
   @State isDoorLocked: boolean = true;
 
+  // 2D 图表的实时数据流数组
+  @State tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
+  @State cryptoTrafficData: number[] = [20, 80, 35, 90, 15, 60, 45, 75, 25, 85, 55, 40, 70, 30, 65, 20, 80, 40, 95, 30];
+
   aboutToAppear() {
     setInterval(() => {
       let date = new Date();
       this.currentTime = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
       this.cpuLoad = Math.floor(Math.random() * 20) + 20;
+
+      // 图表数据动态滚动逻辑
+      this.cryptoTrafficData.shift();
+      this.cryptoTrafficData.push(Math.floor(Math.random() * 80) + 20);
+
+      if (Math.random() > 0.3) {
+        this.tempTrendData.shift();
+        this.tempTrendData.push(Math.floor(Math.random() * 30) + 45);
+      }
     }, 1000);
 
     setTimeout(() => {
@@ -40,56 +53,73 @@ export struct HomePage {
       }
       .width('100%').padding({ bottom: 20 }).border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.08)' })
 
-      Row({ space: 20 }) {
+      Column({ space: 30 }) {
         // 2. 房屋 2D 全息态势区
         Column() {
           Text('全息空间设备拓扑').fontSize(14).fontColor('#A0AAB5').margin({ bottom: 16 }).alignSelf(ItemAlign.Start)
-          Stack() {
-            Column() {
-              Row() { this.RoomGrid('主卧区', '26℃', '45%'); this.RoomGrid('客厅中枢', '24℃', '55%') }.height('50%')
-              Row() {
-                this.RoomGrid('厨房安防', '环境正常', '40%');
-                // 门禁交互卡片
-                Column() {
-                  Text('玄关门禁').fontSize(16).fontColor('rgba(255,255,255,0.2)').fontWeight(FontWeight.Bold)
-                  Text(this.isDoorLocked ? '已设防' : '已解锁').fontSize(12).fontColor(this.isDoorLocked ? '#00E5FF' : '#FF1744').margin({ top: 8 })
+
+          Column() {
+            Row() {
+              this.RoomGrid('主卧区', '26', '℃', '相对湿度', '45%', '空气质量', '优', '美的空调', '#00E5FF', true, '智能窗帘', '#7B61FF', false)
+              this.RoomGrid('客厅中枢', '24', '℃', 'PM 2.5', '12', '当前功耗', '120W', '人体感应', '#FF1744', true, '氛围灯带', '#00FF00', true)
+            }.width('100%').layoutWeight(1)
+
+            Row() {
+              this.RoomGrid('厨房安防', '正常', 'ENV', '燃气浓度', '0%', '烟雾探测', '正常', '烟雾报警', '#FF1744', true, '智能插座', '#00E5FF', true)
+
+              Column({ space: 12 }) {
+                // 🌟 优化：玄关门禁的标题，加入指示竖条，提高亮度
+                Column({ space: 8 }) {
+                  Row({ space: 8 }) {
+                    Rect().width(4).height(16).fill('#00E5FF').radius(2)
+                    Text('玄关门禁').fontSize(18).fontColor('#FFF').fontWeight(FontWeight.Bolder).letterSpacing(1)
+                  }.alignItems(VerticalAlign.Center)
+
+                  Row({ space: 4 }) {
+                    Text(this.isDoorLocked ? '设防中' : '已解锁').fontSize(26).fontWeight(FontWeight.Bolder).fontColor(this.isDoorLocked ? '#00E5FF' : '#FF1744')
+                    Text('STATUS').fontSize(10).fontColor('#667788').margin({ bottom: 4 })
+                  }.alignItems(VerticalAlign.Bottom)
+                }.alignItems(HorizontalAlign.Center)
+
+                Row({ space: 24 }) {
+                  Column({ space: 4 }) { Text('门锁电量').fontSize(10).fontColor('#667788'); Text('85%').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A0AAB5') }.alignItems(HorizontalAlign.Center)
+                  Column({ space: 4 }) { Text('门磁状态').fontSize(10).fontColor('#667788'); Text(this.isDoorLocked ? '闭合' : '开启').fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A0AAB5') }.alignItems(HorizontalAlign.Center)
+                }.justifyContent(FlexAlign.Center)
+
+                Divider().color('rgba(255,255,255,0.05)').width('40%')
+
+                Row({ space: 12 }) {
+                  this.DeviceTag('智能锁', this.isDoorLocked ? '#00FF00' : '#FF1744', !this.isDoorLocked)
+                  this.DeviceTag('安防微波', '#FF9100', this.isDoorLocked)
                 }
-                .width('60%').height('100%').border({ width: 1, color: 'rgba(255,255,255,0.03)' }).justifyContent(FlexAlign.Center)
-                .onClick(() => {
-                  this.isDoorLocked = !this.isDoorLocked;
-                  this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
-                  this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
-                })
-              }.height('50%')
-            }.width('100%').height(280)
-
-            this.DeviceAnchor('美的空调', 20, 20, '#00E5FF', true)
-            this.DeviceAnchor('人体感应', 65, 30, '#FF1744', true)
-            this.DeviceAnchor('智能锁', 80, 75, this.isDoorLocked ? '#00FF00' : '#FF1744', !this.isDoorLocked)
-          }.width('100%')
+              }
+              .layoutWeight(1).height('100%').border({ width: 1, color: 'rgba(255,255,255,0.03)' })
+              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+              .onClick(() => {
+                this.isDoorLocked = !this.isDoorLocked;
+                this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
+                this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
+              })
+            }.width('100%').layoutWeight(1)
+          }
+          .width('100%').height(380)
         }
-        .width('45%').padding(20).backgroundColor('rgba(255,255,255,0.02)')
+        .width('85%').padding(24).backgroundColor('rgba(255,255,255,0.02)')
         .borderRadius(16).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
+        .shadow({ radius: 40, color: 'rgba(0,0,0,0.2)' })
 
-        // 3. 数据可视化动态曲线区
-        Column() {
-          Text('全天候环境态势流').fontSize(14).fontColor('#A0AAB5').margin({ bottom: 16 }).alignSelf(ItemAlign.Start)
-          Row({ space: 20 }) {
-            Column() {
-              Text('温湿度波动指数').fontSize(12).fontColor('#666').margin({ bottom: 8 })
-              DataPanel({ values: [65, 35], max: 100, type: DataPanelType.Line }).width(120).height(120).valueColors(['#00E5FF', '#1976D2'])
-            }
-            Column() {
-              Text('端到端加密吞吐率').fontSize(12).fontColor('#666').margin({ bottom: 8 })
-              DataPanel({ values: [88, 12], max: 100, type: DataPanelType.Line }).width(120).height(120).valueColors(['#7B61FF', '#333'])
-            }
-          }.width('100%').justifyContent(FlexAlign.SpaceAround)
+        // 3. 数据可视化区
+        Row({ space: 24 }) {
+          this.MiniBarChart('温湿度波动指数 (24H)', this.tempTrendData, '#00E5FF')
+          this.MiniBarChart('端到端加密吞吐率 (实时)', this.cryptoTrafficData, '#7B61FF')
         }
-        .layoutWeight(1).padding(20).backgroundColor('rgba(255,255,255,0.02)')
-        .borderRadius(16).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
-      }.width('100%')
+        .width('85%')
+        .justifyContent(FlexAlign.SpaceBetween)
 
-      Blank()
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .justifyContent(FlexAlign.Center)
 
       // 4. AI 智能联动触发底栏
       Row() {
@@ -110,21 +140,89 @@ export struct HomePage {
     }.alignItems(HorizontalAlign.End)
   }
 
-  @Builder RoomGrid(name: string, status: string, w: string) {
-    Column() {
-      Text(name).fontSize(16).fontColor('rgba(255,255,255,0.2)').fontWeight(FontWeight.Bold)
-      Text(status).fontSize(12).fontColor('#00E5FF').margin({ top: 8 })
+  // 🌟 优化：高密度房间数据组件 (更新了标题样式)
+  @Builder RoomGrid(
+    name: string, mainVal: string, mainUnit: string,
+    sub1Lbl: string, sub1Val: string, sub2Lbl: string, sub2Val: string,
+    dev1Name: string, dev1Color: string, dev1Active: boolean,
+    dev2Name?: string, dev2Color?: string, dev2Active?: boolean
+  ) {
+    Column({ space: 12 }) {
+      Column({ space: 8 }) { // 间距微调
+        // 🌟 这是修改的核心：加入左侧科技感发光竖条，字体加粗变白
+        Row({ space: 8 }) {
+          Rect().width(4).height(16).fill('#00E5FF').radius(2)
+          Text(name).fontSize(18).fontColor('#FFF').fontWeight(FontWeight.Bolder).letterSpacing(1)
+        }.alignItems(VerticalAlign.Center)
+
+        Row({ space: 4 }) {
+          Text(mainVal).fontSize(26).fontWeight(FontWeight.Bolder).fontColor('#FFF')
+          Text(mainUnit).fontSize(12).fontColor('#00E5FF').margin({ bottom: 4 })
+        }.alignItems(VerticalAlign.Bottom)
+      }.alignItems(HorizontalAlign.Center)
+
+      Row({ space: 24 }) {
+        Column({ space: 4 }) { Text(sub1Lbl).fontSize(10).fontColor('#667788'); Text(sub1Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A0AAB5') }.alignItems(HorizontalAlign.Center)
+        Column({ space: 4 }) { Text(sub2Lbl).fontSize(10).fontColor('#667788'); Text(sub2Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#A0AAB5') }.alignItems(HorizontalAlign.Center)
+      }.justifyContent(FlexAlign.Center)
+
+      Divider().color('rgba(255,255,255,0.05)').width('40%')
+
+      Row({ space: 12 }) {
+        this.DeviceTag(dev1Name, dev1Color, dev1Active)
+        if (dev2Name && dev2Color !== undefined && dev2Active !== undefined) {
+          this.DeviceTag(dev2Name, dev2Color, dev2Active)
+        }
+      }
     }
-    .width(w).height('100%').border({ width: 1, color: 'rgba(255,255,255,0.03)' }).justifyContent(FlexAlign.Center)
+    .layoutWeight(1)
+    .height('100%')
+    .border({ width: 1, color: 'rgba(255,255,255,0.03)' })
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
   }
 
-  @Builder DeviceAnchor(name: string, x: number, y: number, color: string, active: boolean) {
-    Row({ space: 8 }) {
-      Circle({ width: 10, height: 10 }).fill(color).shadow({ radius: active ? 15 : 0, color: color })
-      Text(name).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#FFF')
+  @Builder DeviceTag(name: string, color: string, active: boolean) {
+    Row({ space: 6 }) {
+      Circle({ width: 6, height: 6 }).fill(color).shadow({ radius: active ? 10 : 0, color: color })
+      Text(name).fontSize(11).fontWeight(FontWeight.Bold).fontColor(active ? '#FFF' : 'rgba(255,255,255,0.4)')
     }
-    .position({ x: `${x}%`, y: `${y}%` }).padding({ left: 12, right: 12, top: 6, bottom: 6 })
-    .backgroundColor('rgba(0,0,0,0.7)').borderRadius(20).border({ width: 1, color: 'rgba(255,255,255,0.1)' })
-    .backdropBlur(10)
+    .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+    .backgroundColor('rgba(0,0,0,0.4)')
+    .borderRadius(12)
+    .border({ width: 1, color: active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.02)' })
+  }
+
+  @Builder MiniBarChart(title: string, dataArray: number[], color: string) {
+    Column({ space: 12 }) {
+      Row() {
+        Text(title).fontSize(12).fontColor('#8899AA')
+        Blank()
+        Row({ space: 4 }) {
+          Circle({ width: 4, height: 4 }).fill(color)
+          Text('LIVE').fontSize(10).fontColor(color).fontWeight(FontWeight.Bold)
+        }
+      }.width('100%')
+
+      Row({ space: 6 }) {
+        ForEach(dataArray, (val: number, idx: number) => {
+          Column()
+            .width(8)
+            .height(`${val}%`)
+            .backgroundColor(color)
+            .borderRadius({ topLeft: 2, topRight: 2 })
+            .opacity(0.2 + (idx / dataArray.length) * 0.8)
+        })
+      }
+      .width('100%')
+      .height(48)
+      .alignItems(VerticalAlign.Bottom)
+      .border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.1)' })
+    }
+    .layoutWeight(1)
+    .padding(16)
+    .backgroundColor('rgba(255,255,255,0.01)')
+    .borderRadius(12)
+    .border({ width: 1, color: 'rgba(255,255,255,0.03)' })
   }
 }
