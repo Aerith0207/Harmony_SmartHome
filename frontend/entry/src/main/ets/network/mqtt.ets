@@ -1,6 +1,6 @@
 // frontend/entry/src/main/ets/network/mqtt.ets
 import { MqttAsync, MqttClient, MqttPublishOptions, MqttSubscribeOptions } from '@ohos/mqtt';
-import { SmartPayload, SensorDataModel } from '../models/DeviceModels';
+import { SensorDataModel } from '../models/DeviceModels';
 import hilog from '@ohos.hilog';
 
 export class MqttBusService {
@@ -21,23 +21,15 @@ export class MqttBusService {
   public init(onConnectedSuccess: () => void): void {
     if (this.isConnected) return;
 
-    //
     try {
-      //   this.client = MqttAsync.createMqtt({
-      //     url: 'tcp://115.175.12.81:1883',
-      //     clientId: `hmos_sh_node_${Date.now()}`,
-      //     persistenceType: 1
-      //   });
       this.client = MqttAsync.createMqtt({
-        // 🌟 1. 换成全球免费公共测试代理节点
-        url: 'tcp://broker.emqx.io:1883',
+        url: 'tcp://broker.emqx.io:1883', // 全球公共测试服
         clientId: `hmos_sh_node_${Date.now()}`,
         persistenceType: 1
       });
 
       this.client.connect({
-        // 🌟 恢复这两个字段，传入空字符串（或随便填任意字符），专门用来“骗”过 ArkTS 的类型检查
-        userName: '',
+        userName: '', // 骗过 ArkTS 类型检查
         password: '',
         keepAliveInterval: 60,
         cleanSession: true
@@ -51,7 +43,10 @@ export class MqttBusService {
       });
 
       this.client.messageArrived((_err: Error, msg) => {
-        if (msg && msg.topic === 'agri/device/hi3861_001/result') {
+        // 🌟 注入雷达 1：只要底层收到任何报文，第一时间拦截并打印！
+        hilog.info(0x0000, 'MQTT_BUS', `📡 物理层收到报文 -> Topic: ${msg?.topic}, Payload: ${msg?.payload}`);
+
+        if (msg && msg.topic === 'smart_home/status') {
           this.handleIncomingData(msg.payload);
         }
       });
@@ -62,7 +57,8 @@ export class MqttBusService {
 
   private subscribeTopics(): void {
     if (!this.client) return;
-    const subOpts: MqttSubscribeOptions = { topic: 'agri/device/hi3861_001/result', qos: 1 };
+    // 🌟 对齐硬件的上报主题
+    const subOpts: MqttSubscribeOptions = { topic: 'smart_home/status', qos: 1 };
     this.client.subscribe(subOpts).catch(() => {});
   }
 
@@ -70,13 +66,15 @@ export class MqttBusService {
     this.sensorCallback = callback;
   }
 
-  public publishCommand(payload: SmartPayload): void {
+  // 🌟 将参数类型从 SmartPayload 修改为支持通用对象的 Record
+  public publishCommand(payload: Record<string, string | number>): void {
     if (!this.client || !this.isConnected) {
       hilog.warn(0x0000, 'MQTT_BUS', '网道未就绪，控制拦截');
       return;
     }
     const pubOpts: MqttPublishOptions = {
-      topic: 'agri/device/hi3861_001/control',
+      // 🌟 对齐硬件的下发主题
+      topic: 'smart_home/control',
       payload: JSON.stringify(payload),
       qos: 1
     };
@@ -87,18 +85,28 @@ export class MqttBusService {
 
   private handleIncomingData(rawPayload: string): void {
     try {
-      const parsed = JSON.parse(rawPayload) as Record<string, Record<string, number | string>>;
-      if (parsed && parsed.data) {
+      hilog.info(0x0000, 'MQTT_BUS', `⚙️ 开始解析 Payload...`);
+      const parsed = JSON.parse(rawPayload) as Record<string, number>;
+
+      if (parsed) {
+        // 🌟 注入雷达 2：确认 JSON 解析是否完美对齐
+        hilog.info(0x0000, 'MQTT_BUS', `✅ JSON解析成功: 温度=${parsed.temp}, 湿度=${parsed.humi}`);
+
         const model = new SensorDataModel();
-        model.temperature = (parsed.data.temp as number) ?? 24.5;
-        model.humidity = (parsed.data.hum as number) ?? 50.0;
-        model.light = (parsed.data.light as number) ?? 400;
-        model.co2 = (parsed.data.co2 as number) ?? 600;
-        model.reportTime = (parsed.data.report_time as string) ?? '';
-        if (this.sensorCallback) this.sensorCallback(model);
+        model.temperature = parsed.temp !== undefined ? parsed.temp : 24.5;
+        model.humidity = parsed.humi !== undefined ? parsed.humi : 50.0;
+        model.light = parsed.light !== undefined ? parsed.light : 400;
+
+        if (this.sensorCallback) {
+          hilog.info(0x0000, 'MQTT_BUS', '🚀 准备将物理流推送到大屏 UI 回调中...');
+          this.sensorCallback(model);
+        } else {
+          hilog.warn(0x0000, 'MQTT_BUS', '⚠️ 警告：UI 层的 sensorCallback 未注册，数据被丢弃！');
+        }
       }
     } catch (e) {
-      hilog.error(0x0000, 'MQTT_BUS', '流解析异常');
+      // 🌟 注入雷达 3：捕获隐藏的格式化崩溃
+      hilog.error(0x0000, 'MQTT_BUS', `❌ 流解析异常: ${e.message}`);
     }
   }
 }
