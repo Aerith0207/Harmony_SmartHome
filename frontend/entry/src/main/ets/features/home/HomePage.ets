@@ -27,12 +27,12 @@ struct MiniBarChart {
         ForEach(this.dataArray, (val: number, idx: number) => {
           Column()
             .width(8)
-            .height(`${val}%`) // 柱子的高度
+            .height(`${val}%`)
             .backgroundColor(this.color)
             .borderRadius({ topLeft: 2, topRight: 2 })
             .opacity(0.2 + (idx / this.dataArray.length) * 0.8)
-            .animation({ duration: 300, curve: Curve.EaseInOut }) // 🌟 奇迹发生的地方：为每根柱子的高度变化注入平滑动画！
-        }, (val: number, idx: number) => idx.toString() + '_' + val.toString()) // 强制刷新 Key
+            .animation({ duration: 300, curve: Curve.EaseInOut })
+        }, (val: number, idx: number) => idx.toString() + '_' + val.toString())
       }
       .width('100%')
       .height(48)
@@ -93,7 +93,7 @@ struct RoomGrid {
 
         Row({ space: 4 }) {
           Text(this.mainVal).fontSize(26).fontWeight(FontWeight.Bolder).fontColor('#FFF')
-            .animation({ duration: 500, curve: Curve.FastOutSlowIn }) // 🌟 注入温度跳变动画
+            .animation({ duration: 500, curve: Curve.FastOutSlowIn })
           Text(this.mainUnit).fontSize(12).fontColor('#00E5FF').margin({ bottom: 4 })
         }.alignItems(VerticalAlign.Bottom)
       }.alignItems(HorizontalAlign.Center)
@@ -117,46 +117,6 @@ struct RoomGrid {
   }
 }
 
-@Component
-export struct PulseDeviceAnchor {
-  @Prop name: string;
-  @Prop x: number;
-  @Prop y: number;
-  @Prop color: string;
-  @Prop @Watch('onActiveChange') active: boolean;
-
-  @State pulseScale: number = 1;
-  @State pulseOpacity: number = 1;
-
-  onActiveChange() {
-    if (this.active) {
-      animateTo({ duration: 1000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate }, () => {
-        this.pulseScale = 1.8;
-        this.pulseOpacity = 0.3;
-      });
-    } else {
-      animateTo({ duration: 400, curve: Curve.EaseInOut, iterations: 1 }, () => {
-        this.pulseScale = 1.0;
-        this.pulseOpacity = 1.0;
-      });
-    }
-  }
-
-  aboutToAppear() { this.onActiveChange(); }
-
-  build() {
-    Row({ space: 8 }) {
-      Circle({ width: 10, height: 10 }).fill(this.color).shadow({ radius: this.active ? 20 : 0, color: this.color })
-        .scale({ x: this.pulseScale, y: this.pulseScale }).opacity(this.pulseOpacity)
-        .animation({ duration: 400, curve: Curve.EaseInOut })
-      Text(this.name).fontSize(12).fontWeight(FontWeight.Bold).fontColor('#FFF')
-    }
-    .position({ x: `${this.x}%`, y: `${this.y}%` }).padding({ left: 12, right: 12, top: 6, bottom: 6 })
-    .backgroundColor('rgba(0,0,0,0.7)').borderRadius(20).border({ width: 1, color: 'rgba(255,255,255,0.1)' })
-    .backdropBlur(10)
-  }
-}
-
 // ==========================================
 // 主页面容器
 // ==========================================
@@ -168,25 +128,30 @@ export struct HomePage {
   @State aiLog: string = 'SYSTEM STANDBY';
   @State aiLogColor: string = '#00E5FF';
 
-  // 门禁状态管控
-  @State isDoorLocked: boolean = true;
-
-  // 🌟 1. 核心修改：将 @State 升级为全局的 @StorageLink
-  // 这样无论你怎么切换页面，数据都会永久保存在 App 运行内存中
+  // 🌟 将所有硬件状态接入全局总线
   @StorageLink('global_realTemp') realTemp: string = '26.0';
   @StorageLink('global_realHum') realHum: string = '45.0';
+  @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
+  @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
+  @StorageLink('global_isAcOn') isAcOn: boolean = false;
+  @StorageLink('global_acTemp') acTemp: number = 26;
+  @StorageLink('global_isAutoAcOn') isAutoAcOn: boolean = false;
 
   @StorageLink('global_tempTrend') tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
   @StorageLink('global_cryptoTraffic') cryptoTrafficData: number[] = [20, 80, 35, 90, 15, 60, 45, 75, 25, 85, 55, 40, 70, 30, 65, 20, 80, 40, 95, 30];
 
   aboutToAppear() {
-    // 🌟 注册真实的硬件传感器监听回调
     MqttBusService.getInstance().registerSensorListener((data: SensorDataModel) => {
       animateTo({ duration: 500, curve: Curve.EaseInOut }, () => {
+        // 🌟 将解析好的模型数据强行覆盖给 UI
         this.realTemp = data.temperature.toFixed(1);
         this.realHum = data.humidity.toFixed(1);
+        this.isDoorLocked = !data.doorOpen;
+        this.isMainLightOn = data.lightStatus;
+        this.isAcOn = data.acStatus;
+        this.acTemp = data.acTemp;
+        this.isAutoAcOn = data.autoAc;
 
-        // 🌟 2. 核心修改：使用解构赋值创建新数组，强制内存地址变更，打醒图表渲染引擎
         let newTempChart = [...this.tempTrendData];
         newTempChart.shift();
         newTempChart.push(data.temperature);
@@ -199,7 +164,6 @@ export struct HomePage {
       this.currentTime = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
       this.cpuLoad = Math.floor(Math.random() * 20) + 20;
 
-      // 顺便把本地循环跑的加密流图表也修好
       animateTo({ duration: 800, curve: Curve.Linear }, () => {
         let newCryptoChart = [...this.cryptoTrafficData];
         newCryptoChart.shift();
@@ -210,8 +174,8 @@ export struct HomePage {
 
     setTimeout(() => {
       animateTo({ duration: 500, curve: Curve.EaseInOut }, () => {
-        this.aiLog = '[AI SCENE] 检测到人体活动，已自动开启客厅主灯';
-        this.aiLogColor = '#FF1744';
+        this.aiLog = '[AI SCENE] 边缘网关态势感知网络已就绪';
+        this.aiLogColor = '#00FF00';
       });
     }, 5000);
   }
@@ -240,18 +204,17 @@ export struct HomePage {
 
           Column() {
             Row() {
-              // 🌟 核心：通过对象传参，强制绑定 this.realTemp 状态
               RoomGrid({
                 name: '主卧区', mainVal: this.realTemp, mainUnit: '℃',
                 sub1Lbl: '相对湿度', sub1Val: `${this.realHum}%`, sub2Lbl: '空气质量', sub2Val: '优',
-                dev1Name: '美的空调', dev1Color: '#00E5FF', dev1Active: true,
+                dev1Name: '美的空调', dev1Color: '#00E5FF', dev1Active: this.isAcOn,
                 dev2Name: '智能窗帘', dev2Color: '#7B61FF', dev2Active: false
               })
               RoomGrid({
                 name: '客厅中枢', mainVal: '24.5', mainUnit: '℃',
                 sub1Lbl: 'PM 2.5', sub1Val: '12', sub2Lbl: '当前功耗', sub2Val: '120W',
                 dev1Name: '人体感应', dev1Color: '#FF1744', dev1Active: true,
-                dev2Name: '氛围灯带', dev2Color: '#00FF00', dev2Active: true
+                dev2Name: '主灯群组', dev2Color: '#00FF00', dev2Active: this.isMainLightOn
               })
             }.width('100%').layoutWeight(1)
 
@@ -284,7 +247,6 @@ export struct HomePage {
                 Divider().color('rgba(255,255,255,0.05)').width('40%')
 
                 Row({ space: 12 }) {
-                  // 🌟 修复门禁卡片内的独立设备调用语法
                   DeviceTag({ name: '智能锁', color: this.isDoorLocked ? '#00FF00' : '#FF1744', active: !this.isDoorLocked })
                   DeviceTag({ name: '安防微波', color: '#FF9100', active: this.isDoorLocked })
                 }
@@ -294,6 +256,8 @@ export struct HomePage {
               .onClick(() => {
                 animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
                   this.isDoorLocked = !this.isDoorLocked;
+                  // 🌟 不仅改动画，还要给硬件发号施令
+                  MqttBusService.getInstance().publishCommand({ "cmd": this.isDoorLocked ? "door_close" : "door_open", "value": 0 });
                   this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
                   this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
                 });
@@ -308,9 +272,7 @@ export struct HomePage {
         .shadow({ radius: 40, color: 'rgba(0,0,0,0.2)' })
 
         // 3. 数据可视化区
-        // 3. 数据可视化区
         Row({ space: 24 }) {
-          // 🌟 核心修复：删掉 this. 并且改用大括号对象传参！
           MiniBarChart({ title: '温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: '#00E5FF' })
           MiniBarChart({ title: '端到端加密吞吐率 (实时)', dataArray: this.cryptoTrafficData, color: '#7B61FF' })
         }
@@ -334,10 +296,6 @@ export struct HomePage {
     }
     .width('100%').height('100%').padding(24)
   }
-
-  // ==========================================
-  // 保留用于内部绘制的简单 Builder
-  // ==========================================
 
   @Builder StatusIndicator(lbl: string, val: string, clr: string) {
     Column() {
