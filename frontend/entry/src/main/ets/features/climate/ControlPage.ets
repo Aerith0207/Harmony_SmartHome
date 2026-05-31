@@ -91,18 +91,20 @@ struct DeviceToggle {
 
 @Component
 export struct ControlPage {
-  @State targetTemp: number = 24;
-  @State currentTemp: number = 26;
-  @State isAcOn: boolean = true;
+  // 🌟 将局部的 @State 全部换成打通任督二脉的 @StorageLink
+  @StorageLink('global_acTemp') targetTemp: number = 24;
+  @StorageLink('global_realTemp') currentTemp: string = '26.0';
+  @StorageLink('global_realHum') currentHum: string = '45.0';
+  @StorageLink('global_isAcOn') isAcOn: boolean = false;
+
   @State acMode: string = 'COOL';
   @State fanSpeed: string = 'AUTO';
-
   @State activeScene: string = '回家模式';
-  @State isMainLightOn: boolean = false;
-  @State isDoorOpen: boolean = false; // 对应硬件协议的 door
-  @State isAutoAcOn: boolean = false; // 对应硬件协议的 auto_ac
 
-  // 🌟 修改发送方法的接收类型，直接处理对象
+  @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
+  @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
+  @StorageLink('global_isAutoAcOn') isAutoAcOn: boolean = false;
+
   sendCommand(payloadObj: Record<string, string | number>) {
     hilog.info(0x0000, 'SmartHome', `[MQTT] 准备下发指令: ${JSON.stringify(payloadObj)}`);
     try {
@@ -117,17 +119,14 @@ export struct ControlPage {
       Blank()
 
       Column({ space: 24 }) {
-        // --- 标题 ---
         Row() {
           Text('分布式硬件指令中枢').fontSize(24).fontWeight(FontWeight.Bold).fontColor('#FFF')
           Blank()
           Text('Protocol: hi3861_v1').fontColor('#A0AAB5').fontSize(12).fontFamily('monospace')
         }.width('100%')
 
-        // --- 核心控制交互区 ---
         Row({ space: 24 }) {
 
-          // 区域 1：暖通空调面板
           Column() {
             Text('HVAC Climate Control').fontSize(12).fontColor('#00E5FF').letterSpacing(2).margin({ bottom: 20 })
 
@@ -148,7 +147,8 @@ export struct ControlPage {
 
             Row({ space: 24 }) {
               Column({ space: 4 }) { Text('CURRENT').fontSize(10).fontColor('#666'); Text(`${this.currentTemp}℃`).fontSize(16).fontColor('#FFF').fontWeight(FontWeight.Bold) }.alignItems(HorizontalAlign.Center)
-              Column({ space: 4 }) { Text('HUMIDITY').fontSize(10).fontColor('#666'); Text('45%').fontSize(16).fontColor('#FFF').fontWeight(FontWeight.Bold) }.alignItems(HorizontalAlign.Center)
+              // 🌟 这里已经接通了实时的相对湿度
+              Column({ space: 4 }) { Text('HUMIDITY').fontSize(10).fontColor('#666'); Text(`${this.currentHum}%`).fontSize(16).fontColor('#FFF').fontWeight(FontWeight.Bold) }.alignItems(HorizontalAlign.Center)
             }.margin({ bottom: 24 })
 
             Row({ space: 16 }) {
@@ -156,7 +156,6 @@ export struct ControlPage {
                 .onClick(() => {
                   if(this.isAcOn) {
                     animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp -= 1; });
-                    // 🌟 硬件指令：设定温度
                     this.sendCommand({ "cmd": "ac_set", "value": this.targetTemp });
                   }
                 })
@@ -165,14 +164,12 @@ export struct ControlPage {
                 .animation({ duration: 600, curve: Curve.EaseOut })
                 .onClick(() => {
                   animateTo({ duration: 600, curve: Curve.FastOutSlowIn }, () => { this.isAcOn = !this.isAcOn; });
-                  // 🌟 硬件指令：空调开关
                   this.sendCommand({ "cmd": this.isAcOn ? "ac_on" : "ac_off", "value": 0 });
                 })
               Button('+').width(50).height(50).fontSize(20).backgroundColor('rgba(255,255,255,0.05)').fontColor('#FFF')
                 .onClick(() => {
                   if(this.isAcOn) {
                     animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp += 1; });
-                    // 🌟 硬件指令：设定温度
                     this.sendCommand({ "cmd": "ac_set", "value": this.targetTemp });
                   }
                 })
@@ -188,7 +185,6 @@ export struct ControlPage {
           .layoutWeight(45).height('100%').padding(24).backgroundColor('rgba(255,255,255,0.02)')
           .borderRadius(20).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
 
-          // 区域 2：场景矩阵与设备群控
           Column({ space: 24 }) {
 
             Column({ space: 12 }) {
@@ -196,13 +192,11 @@ export struct ControlPage {
               Row({ space: 12 }) {
                 SceneCard({ title: '回家模式', desc: '自动感光与温控', glowColor: '#00E5FF', active: this.activeScene === '回家模式', onClickAction: () => {
                   animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '回家模式'; });
-                  // 示例联动：打开自动灯光和自动空调
                   this.sendCommand({ "cmd": "auto_light_on", "value": 0 });
                   this.sendCommand({ "cmd": "auto_ac_on", "value": 0 });
                 }})
                 SceneCard({ title: '离家模式', desc: '断电/开启安防', glowColor: '#FF1744', active: this.activeScene === '离家模式', onClickAction: () => {
                   animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '离家模式'; });
-                  // 示例联动：关闭所有设备
                   this.sendCommand({ "cmd": "light_off", "value": 0 });
                   this.sendCommand({ "cmd": "ac_off", "value": 0 });
                   this.sendCommand({ "cmd": "door_close", "value": 0 });
@@ -222,17 +216,15 @@ export struct ControlPage {
               Column({ space: 8 }) {
                 DeviceToggle({ name: '客厅主灯', desc: '全彩吸顶灯/继电器', isOn: this.isMainLightOn, color: '#00FF00', toggleAction: (val) => {
                   this.isMainLightOn = val;
-                  // 🌟 硬件指令：开灯/关灯
                   this.sendCommand({ "cmd": val ? "light_on" : "light_off", "value": 0 });
                 }})
-                DeviceToggle({ name: '智能门锁', desc: '入户门禁控制', isOn: this.isDoorOpen, color: '#00E5FF', toggleAction: (val) => {
-                  this.isDoorOpen = val;
-                  // 🌟 硬件指令：开门/关门
+                // 🌟 注意：硬件协议里门禁闭合是设防，开启是解防。我们用 !isDoorLocked 来绑定 UI 开关
+                DeviceToggle({ name: '智能门锁', desc: '入户门禁控制', isOn: !this.isDoorLocked, color: '#00E5FF', toggleAction: (val) => {
+                  this.isDoorLocked = !val;
                   this.sendCommand({ "cmd": val ? "door_open" : "door_close", "value": 0 });
                 }})
                 DeviceToggle({ name: '自动温控', desc: 'AI环境感知调节', isOn: this.isAutoAcOn, color: '#7B61FF', toggleAction: (val) => {
                   this.isAutoAcOn = val;
-                  // 🌟 硬件指令：自动空调模式
                   this.sendCommand({ "cmd": val ? "auto_ac_on" : "auto_ac_off", "value": 0 });
                 }})
               }

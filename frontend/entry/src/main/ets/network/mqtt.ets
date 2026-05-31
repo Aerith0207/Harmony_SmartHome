@@ -93,9 +93,20 @@ export class MqttBusService {
         hilog.info(0x0000, 'MQTT_BUS', `✅ JSON解析成功: 温度=${parsed.temp}, 湿度=${parsed.humi}`);
 
         const model = new SensorDataModel();
+
+        // 1. 基础环境数据提取
         model.temperature = parsed.temp !== undefined ? parsed.temp : 24.5;
         model.humidity = parsed.humi !== undefined ? parsed.humi : 50.0;
         model.light = parsed.light !== undefined ? parsed.light : 400;
+
+        // 🌟 2. 开关与模式状态提取 (0 为 false/关，1 为 true/开)
+        model.lightStatus = parsed.light_sw === 1;
+        model.doorOpen = parsed.door === 1;
+        model.acStatus = parsed.ac_sw === 1;
+        model.acTemp = parsed.ac_temp !== undefined ? parsed.ac_temp : 26;
+        model.acMode = parsed.ac_mode !== undefined ? parsed.ac_mode : 0;
+        model.autoLight = parsed.auto_light === 1;
+        model.autoAc = parsed.auto_ac === 1;
 
         if (this.sensorCallback) {
           hilog.info(0x0000, 'MQTT_BUS', '🚀 准备将物理流推送到大屏 UI 回调中...');

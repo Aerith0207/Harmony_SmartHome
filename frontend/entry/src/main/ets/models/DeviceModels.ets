@@ -18,6 +18,7 @@ export class SmartPayload {
 }
 
 export class SensorDataModel {
+  // 原有的环境数据
   public temperature: number = 0.0;
   public humidity: number = 0.0;
   public light: number = 0.0;
@@ -25,6 +26,15 @@ export class SensorDataModel {
   public ph: number = 0.0;
   public soilMoist: number = 0.0;
   public reportTime: string = '';
+
+  // 🌟 进阶新增：设备开关实时状态映射
+  public lightStatus: boolean = false; // 对应 light_sw
+  public doorOpen: boolean = false;    // 对应 door
+  public acStatus: boolean = false;    // 对应 ac_sw
+  public acTemp: number = 26;          // 对应 ac_temp
+  public acMode: number = 0;           // 对应 ac_mode
+  public autoLight: boolean = true;    // 对应 auto_light
+  public autoAc: boolean = false;      // 对应 auto_ac
 }
 
 export class CryptoModuleState {
