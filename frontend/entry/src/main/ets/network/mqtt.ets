@@ -23,35 +23,47 @@ export class MqttBusService {
 
     try {
       this.client = MqttAsync.createMqtt({
-        url: 'tcp://broker.emqx.io:1883', // 全球公共测试服
+        // 🌟 实验性探针：指向 TLS 端口
+        url: 'ssl://broker.emqx.io:8883',
         clientId: `hmos_sh_node_${Date.now()}`,
         persistenceType: 1
       });
 
       this.client.connect({
-        userName: '', // 骗过 ArkTS 类型检查
+        userName: '',
         password: '',
         keepAliveInterval: 60,
-        cleanSession: true
+        cleanSession: true,
+        sslOptions: {
+          enableServerCertAuth: false  // 盲测绝招：先关闭 CA 证书强校验，只验证加密隧道能否打通
+        }
       }).then(() => {
         this.isConnected = true;
-        hilog.info(0x0000, 'MQTT_BUS', '✅ 智能家居控制总线连接成功');
+        // 🌟 修正 1：严谨的日志描述，不提前宣告胜利
+        hilog.info(0x0000, 'MQTT_BUS', '✅ MQTT连接成功 [Broker:8883]');
         this.subscribeTopics();
+
+        // 🌟 验证步骤 2：连接成功后，主动向测试通道发一条探测报文
+        this.client?.publish({
+          topic: 'test/tls',
+          payload: 'tls_handshake_probe',
+          qos: 0
+        });
+
         onConnectedSuccess();
       }).catch((err: Error) => {
-        hilog.error(0x0000, 'MQTT_BUS', `❌ 连接建立失败: ${err.message}`);
+        // 🌟 修正 2：完整暴露底层的握手崩溃细节，方便精准排雷
+        hilog.error(0x0000, 'MQTT_BUS', `❌ MQTT Connect Error: ${JSON.stringify(err)} | msg: ${err.message}`);
       });
 
       this.client.messageArrived((_err: Error, msg) => {
-        // 🌟 注入雷达 1：只要底层收到任何报文，第一时间拦截并打印！
         hilog.info(0x0000, 'MQTT_BUS', `📡 物理层收到报文 -> Topic: ${msg?.topic}, Payload: ${msg?.payload}`);
-
         if (msg && msg.topic === 'smart_home/status') {
           this.handleIncomingData(msg.payload);
         }
       });
     } catch (e) {
-      hilog.error(0x0000, 'MQTT_BUS', '初始化异常');
+      hilog.error(0x0000, 'MQTT_BUS', `初始化异常: ${JSON.stringify(e)}`);
     }
   }
 
