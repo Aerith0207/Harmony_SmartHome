@@ -2,9 +2,12 @@
 
 import { MqttBusService } from '../../network/mqtt';
 import { SensorDataModel } from '../../models/DeviceModels';
+import { DeviceManager } from '../../core/DeviceManager';
+import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
+import { DeviceCommand } from '../../core/adapter/CommandModel';
 
 // ==========================================
-// 独立响应式组件区 (解决数据无法更新的问题)
+// 独立响应式组件区 (MiniBarChart, DeviceTag, RoomGrid 保持不变)
 // ==========================================
 @Component
 struct MiniBarChart {
@@ -128,7 +131,6 @@ export struct HomePage {
   @State aiLog: string = 'SYSTEM STANDBY';
   @State aiLogColor: string = '#00E5FF';
 
-  // 🌟 将所有硬件状态接入全局总线
   @StorageLink('global_realTemp') realTemp: string = '26.0';
   @StorageLink('global_realHum') realHum: string = '45.0';
   @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
@@ -143,7 +145,6 @@ export struct HomePage {
   aboutToAppear() {
     MqttBusService.getInstance().registerSensorListener((data: SensorDataModel) => {
       animateTo({ duration: 500, curve: Curve.EaseInOut }, () => {
-        // 🌟 将解析好的模型数据强行覆盖给 UI
         this.realTemp = data.temperature.toFixed(1);
         this.realHum = data.humidity.toFixed(1);
         this.isDoorLocked = !data.doorOpen;
@@ -256,8 +257,9 @@ export struct HomePage {
               .onClick(() => {
                 animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
                   this.isDoorLocked = !this.isDoorLocked;
-                  // 🌟 不仅改动画，还要给硬件发号施令
-                  MqttBusService.getInstance().publishCommand({ "cmd": this.isDoorLocked ? "door_close" : "door_open", "value": 0 });
+                  // 🌟 主页同样全解耦下发指令
+                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, this.isDoorLocked));
+
                   this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
                   this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
                 });
@@ -271,7 +273,6 @@ export struct HomePage {
         .borderRadius(16).border({ width: 1, color: 'rgba(255,255,255,0.05)' })
         .shadow({ radius: 40, color: 'rgba(0,0,0,0.2)' })
 
-        // 3. 数据可视化区
         Row({ space: 24 }) {
           MiniBarChart({ title: '温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: '#00E5FF' })
           MiniBarChart({ title: '端到端加密吞吐率 (实时)', dataArray: this.cryptoTrafficData, color: '#7B61FF' })
@@ -284,7 +285,6 @@ export struct HomePage {
       .layoutWeight(1)
       .justifyContent(FlexAlign.Center)
 
-      // 4. AI 智能联动触发底栏
       Row() {
         Text('⚡ AI ENGINE EVENT:').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.aiLogColor).margin({ right: 12 })
           .animation({ duration: 300 })
