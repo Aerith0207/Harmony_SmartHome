@@ -3,9 +3,10 @@ import hilog from '@ohos.hilog';
 import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
+import { AiDecisionEngine, AiCommand } from '../ai/AiDecisionEngine';
 
 // ==========================================
-// 独立响应式组件区 (SubControlBtn, SceneCard, DeviceToggle 保持不变)
+// 独立响应式组件区
 // ==========================================
 @Component
 struct SubControlBtn {
@@ -86,25 +87,113 @@ struct DeviceToggle {
   }
 }
 
+// 🌟 新增：人机协同授权弹窗
+@CustomDialog
+export struct AiConfirmDialog {
+  controller: CustomDialogController;
+  strategyList: AiCommand[] = [];
+  onConfirm: () => void = () => {};
+
+  build() {
+    Column() {
+      Text('🧠 AI 智能场景决策')
+        .fontSize(20).fontWeight(FontWeight.Bold).fontColor('#333').margin({ bottom: 15 })
+
+      ForEach(this.strategyList, (item: AiCommand) => {
+        Row() {
+          Text(`设备: ${item.device} `).fontColor('#666').fontSize(16)
+          Text(`动作: ${item.action} -> ${item.value}`).fontColor('#00E5FF').fontSize(16).fontWeight(FontWeight.Medium)
+        }.width('100%').margin({ bottom: 10 }).padding({ left: 10, right: 10 })
+      }, (item: AiCommand, index: number) => index.toString())
+
+      Row({ space: 20 }) {
+        Button('取消忽略')
+          .backgroundColor('#F5F5F5').fontColor('#333').layoutWeight(1)
+          .onClick(() => { this.controller.close() })
+
+        Button('授权执行')
+          .backgroundColor('#00E5FF').fontColor(Color.White).layoutWeight(1)
+          .onClick(() => {
+            this.onConfirm();
+            this.controller.close();
+          })
+      }.margin({ top: 20 }).width('100%')
+    }
+    .padding(24).backgroundColor(Color.White).borderRadius(16)
+  }
+}
+
 // ==========================================
 // 主页面容器
 // ==========================================
-
 @Component
 export struct ControlPage {
   @StorageLink('global_acTemp') targetTemp: number = 24;
   @StorageLink('global_realTemp') currentTemp: string = '26.0';
   @StorageLink('global_realHum') currentHum: string = '45.0';
   @StorageLink('global_isAcOn') isAcOn: boolean = false;
-
-  // 🌟 将空调模式统一切换为数字状态 (0:COOL, 1:HEAT, 2:DRY)
   @StorageLink('global_acMode') acMode: number = 0;
   @State fanSpeed: string = 'AUTO';
   @State activeScene: string = '回家模式';
-
   @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
   @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
   @StorageLink('global_isAutoAcOn') isAutoAcOn: boolean = false;
+
+  // 🌟 AI 状态与弹窗控制器
+  @State currentAiStrategy: AiCommand[] = [];
+  @State isAiLoading: boolean = false;
+  // 🌟 新增：绑定用户真实输入的变量
+  @State userInputIntent: string = '';
+  @State currentAcBrand: number = 0; // 0:通用, 1:海尔, 2:格力, 3:美的
+
+  // 🌟 修改：强化兼容性的UI更新逻辑
+  dialogController: CustomDialogController = new CustomDialogController({
+    builder: AiConfirmDialog({
+      strategyList: this.currentAiStrategy,
+      onConfirm: () => {
+        this.currentAiStrategy.forEach((strategy: AiCommand) => {
+          // 1. 下发给底层设备总线
+          let cmd = new DeviceCommand(strategy.device as DeviceType, strategy.action as DeviceAction, strategy.value);
+          DeviceManager.getInstance().sendCommand(cmd);
+
+          // 2. 防御性UI状态更新：兼容大模型的各种拼写习惯
+          let act = strategy.action.toLowerCase();
+          let val = strategy.value;
+          let isTurnOn = (val === true || val === 'true' || val === 1 || val === 'on');
+
+          if(strategy.device === 'ac') {
+            if(act === 'power' || act === 'switch') {
+              this.isAcOn = isTurnOn;
+            }
+            if(act === 'temperature' || act === 'temp') {
+              this.targetTemp = Number(val);
+            }
+          }
+          if(strategy.device === 'light') {
+            if(act === 'power' || act === 'switch') {
+              this.isMainLightOn = isTurnOn;
+            }
+          }
+        });
+      }
+    }),
+    autoCancel: false,
+    alignment: DialogAlignment.Center
+  });
+
+  async triggerAiAssistant(intent: string) {
+    this.isAiLoading = true;
+    let temp = parseFloat(this.currentTemp);
+    let hum = parseFloat(this.currentHum);
+
+    let strategy = await AiDecisionEngine.requestStrategy(intent, temp, hum);
+    this.isAiLoading = false;
+
+    if (strategy && strategy.length > 0) {
+      this.currentAiStrategy = strategy;
+      this.dialogController.open();
+    }
+  }
 
   build() {
     Column() {
@@ -119,7 +208,25 @@ export struct ControlPage {
 
         Row({ space: 24 }) {
           Column() {
-            Text('HVAC Climate Control').fontSize(12).fontColor('#00E5FF').letterSpacing(2).margin({ bottom: 20 })
+            // 🌟核心替换部分：将原本单独的Text替换为包含Select下拉框的Row
+            Row() {
+              Text('HVAC Climate Control').fontSize(12).fontColor('#00E5FF').letterSpacing(2)
+              Blank()
+              Select([{ value: '默认通用' }, { value: '海尔' }, { value: '格力' }, { value: '美的' }])
+                .selected(this.currentAcBrand)
+                .value('品牌:默认')
+                .font({ size: 12, weight: 500 })
+                .fontColor('#00E5FF')
+                .selectedOptionFont({ size: 12, weight: 400 })
+                .optionFont({ size: 12, weight: 400 })
+                .backgroundColor('rgba(0, 229, 255, 0.1)')
+                .borderRadius(8)
+                .onSelect((index: number, value: string) => {
+                  this.currentAcBrand = index;
+                  // 向下层发送解耦的配置指令
+                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, 'brand' as DeviceAction, index));
+                })
+            }.width('100%').margin({ bottom: 20 })
 
             Stack() {
               Circle({ width: 200, height: 200 }).fill('transparent').stroke('rgba(0, 229, 255, 0.1)').strokeWidth(1)
@@ -146,7 +253,6 @@ export struct ControlPage {
                 .onClick(() => {
                   if(this.isAcOn) {
                     animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp -= 1; });
-                    // 🌟 完全解耦：发送空调调温意图
                     DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.TEMPERATURE, this.targetTemp));
                   }
                 })
@@ -155,14 +261,12 @@ export struct ControlPage {
                 .animation({ duration: 600, curve: Curve.EaseOut })
                 .onClick(() => {
                   animateTo({ duration: 600, curve: Curve.FastOutSlowIn }, () => { this.isAcOn = !this.isAcOn; });
-                  // 🌟 完全解耦：发送空调电源意图
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, this.isAcOn));
                 })
               Button('+').width(50).height(50).fontSize(20).backgroundColor('rgba(255,255,255,0.05)').fontColor('#FFF')
                 .onClick(() => {
                   if(this.isAcOn) {
                     animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.targetTemp += 1; });
-                    // 🌟 完全解耦：发送空调调温意图
                     DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.TEMPERATURE, this.targetTemp));
                   }
                 })
@@ -170,22 +274,13 @@ export struct ControlPage {
 
             Row({ space: 12 }) {
               SubControlBtn({ label: 'COOL', isActive: this.acMode === 0 && this.isAcOn, activeColor: '#00E5FF', onClickAction: () => {
-                if(this.isAcOn) {
-                  animateTo({duration:300}, () => this.acMode = 0);
-                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 0));
-                }
+                if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 0); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 0)); }
               }})
               SubControlBtn({ label: 'HEAT', isActive: this.acMode === 1 && this.isAcOn, activeColor: '#FF9100', onClickAction: () => {
-                if(this.isAcOn) {
-                  animateTo({duration:300}, () => this.acMode = 1);
-                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 1));
-                }
+                if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 1); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 1)); }
               }})
               SubControlBtn({ label: 'DRY', isActive: this.acMode === 2 && this.isAcOn, activeColor: '#7B61FF', onClickAction: () => {
-                if(this.isAcOn) {
-                  animateTo({duration:300}, () => this.acMode = 2);
-                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 2));
-                }
+                if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 2); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 2)); }
               }})
             }.width('100%').justifyContent(FlexAlign.Center)
 
@@ -196,39 +291,50 @@ export struct ControlPage {
           Column({ space: 24 }) {
 
             Column({ space: 12 }) {
-              Text('Smart Scenes').fontSize(12).fontColor('#00E5FF').letterSpacing(2).alignSelf(ItemAlign.Start)
+              Text('Smart Scenes & AI辅助决策系统').fontSize(12).fontColor('#00E5FF').letterSpacing(2).alignSelf(ItemAlign.Start)
+
+              // 🌟 核心替换：把死按钮换成真实的自然语言输入框
+              Row({ space: 8 }) {
+                TextInput({ placeholder: '请输入需求，如：我有点热', text: this.userInputIntent })
+                  .layoutWeight(1)
+                  .height(40)
+                  .backgroundColor('rgba(255,255,255,0.05)')
+                  .fontColor('#FFF')
+                  .placeholderColor('#666')
+                  .onChange((value: string) => {
+                    this.userInputIntent = value;
+                  })
+                  .onSubmit(() => {
+                    if(this.userInputIntent.trim() !== '') {
+                      this.triggerAiAssistant(this.userInputIntent);
+                    }
+                  })
+
+                Button(this.isAiLoading ? '...' : '发送')
+                  .height(40)
+                  .backgroundColor('#00E5FF')
+                  .fontColor(Color.White)
+                  .onClick(() => {
+                    if(this.userInputIntent.trim() !== '') {
+                      this.triggerAiAssistant(this.userInputIntent);
+                    }
+                  })
+              }.width('100%')
+
+              // 下方的回家模式/离家模式 SceneCard 保持不变...
               Row({ space: 12 }) {
                 SceneCard({ title: '回家模式', desc: '自动感光与温控', glowColor: '#00E5FF', active: this.activeScene === '回家模式', onClickAction: () => {
-                  animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
-                    this.activeScene = '回家模式';
-                    // 🌟 核心修复：同步更新大屏的 UI 状态，让开关跟着动！
-                    this.isMainLightOn = true;
-                    this.isAcOn = true;
-                  });
-                  // 场景联动解耦下发
+                  animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '回家模式'; this.isMainLightOn = true; this.isAcOn = true; });
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, true));
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, true));
                 }})
-
                 SceneCard({ title: '离家模式', desc: '断电/开启安防', glowColor: '#FF1744', active: this.activeScene === '离家模式', onClickAction: () => {
-                  animateTo({ duration: 300, curve: Curve.EaseInOut }, () => {
-                    this.activeScene = '离家模式';
-                    // 🌟 核心修复：同步更新大屏的 UI 状态，让开关跟着动！
-                    this.isMainLightOn = false;
-                    this.isAcOn = false;
-                    this.isDoorLocked = true;
-                    this.isAutoAcOn = false; // 离家一般连自动温控也关掉
-                  });
-                  // 场景联动解耦下发
+                  animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '离家模式'; this.isMainLightOn = false; this.isAcOn = false; this.isDoorLocked = true; this.isAutoAcOn = false; });
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, false));
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, false));
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true));
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.AUTO, false));
                 }})
-              }.width('100%')
-              Row({ space: 12 }) {
-                SceneCard({ title: '睡眠模式', desc: '熄灯/恒温', glowColor: '#7B61FF', active: this.activeScene === '睡眠模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '睡眠模式'; }) } })
-                SceneCard({ title: '观影模式', desc: '环境灯/静音', glowColor: '#FF9100', active: this.activeScene === '观影模式', onClickAction: () => { animateTo({ duration: 300, curve: Curve.EaseInOut }, () => { this.activeScene = '观影模式'; }) } })
               }.width('100%')
             }
 
@@ -240,7 +346,6 @@ export struct ControlPage {
               Column({ space: 8 }) {
                 DeviceToggle({ name: '客厅主灯', desc: '全彩吸顶灯/继电器', isOn: this.isMainLightOn, color: '#00FF00', toggleAction: (val) => {
                   this.isMainLightOn = val;
-                  // 🌟 单品直连解耦下发
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, val));
                 }})
                 DeviceToggle({ name: '智能门锁', desc: '入户门禁控制', isOn: !this.isDoorLocked, color: '#00E5FF', toggleAction: (val) => {
@@ -249,7 +354,6 @@ export struct ControlPage {
                 }})
                 DeviceToggle({ name: '自动温控', desc: 'AI环境感知调节', isOn: this.isAutoAcOn, color: '#7B61FF', toggleAction: (val) => {
                   this.isAutoAcOn = val;
-                  // 完全解耦的意图下发
                   DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.AUTO, val));
                 }})
               }
