@@ -6,7 +6,7 @@ import { CryptoUtil } from '../core/utils/CryptoUtil';
 
 export class MqttBusService {
   private static instance: MqttBusService | null = null;
-  private client: MqttClient | null = null;
+  public client: MqttClient | null = null;
   private isConnected: boolean = false;
   private sensorCallback: ((data: SensorDataModel) => void) | null = null;
 
@@ -78,60 +78,49 @@ export class MqttBusService {
 
   // 🔒 下发指令时：AES-128-GCM 加密，封装为二进制字符串绕过 ArkTS 检查
   public publishCommand(payload: Record<string, string | number>): void {
-    if (!this.client || !this.isConnected) {
-      hilog.warn(0x0000, 'MQTT_BUS', '网道未就绪，控制拦截');
-      return;
-    }
-
+    if (!this.client || !this.isConnected) return;
     let plainTextJson: string = JSON.stringify(payload);
 
     CryptoUtil.encrypt(plainTextJson).then((cipherBytes: Uint8Array) => {
-      hilog.info(0x0000, 'MQTT_BUS', `🔒 指令已加密，准备发送二进制流，长度: ${cipherBytes.length} bytes`);
-
-      // 🌟 纯血 ArkTS 破局法：将字节流逐个转为单字节字符拼成字符串
-      let binaryString: string = "";
+      // 转 Hex 字符串
+      let hexString = "";
       for (let i = 0; i < cipherBytes.length; i++) {
-        binaryString += String.fromCharCode(cipherBytes[i]);
+        let hex = cipherBytes[i].toString(16).toUpperCase();
+        hexString += (hex.length === 1 ? "0" + hex : hex);
       }
+
+      hilog.info(0x0000, 'MQTT_BUS', `🔒 指令已加密为Hex文本下发: ${hexString}`);
 
       const pubOpts: MqttPublishOptions = {
         topic: 'smart_home/control',
-        payload: binaryString, // 堂堂正正传入 string，保留真实的二进制数据
+        payload: hexString, // 堂堂正正发送标准的纯净字符串
         qos: 1
       };
-
-      this.client?.publish(pubOpts).catch((err: Error) => {
-        hilog.error(0x0000, 'MQTT_BUS', `下发失败: ${err.message}`);
-      });
-    }).catch((err: Error) => {
-      hilog.error(0x0000, 'MQTT_BUS', `❌ 指令加密异常，已拦截发送: ${err.message}`);
-    });
+      this.client?.publish(pubOpts).catch((err: Error) => {});
+    }).catch((err: Error) => {});
   }
 
-  // 🔓 收到上报数据时：将原始二进制流送入 AES-128-GCM 引擎验证解密
+  // 🔓 接收数据（Hex字符串 -> 还原二进制 -> 解密）
   private async handleIncomingData(rawPayload: ArrayBuffer | string): Promise<void> {
     try {
-      hilog.info(0x0000, 'MQTT_BUS', `⚙️ 收到加密流，正在送入 AES-128-GCM 引擎解密...`);
-
+      hilog.info(0x0000, 'MQTT_BUS', `⚙️ 收到加密流，正在转换并解密...`);
       let cipherBytes: Uint8Array;
 
-      // 鲁棒性兼容转换：将网络层载荷统一提取为规范的 Uint8Array 字节流
-      if (rawPayload instanceof ArrayBuffer) {
-        cipherBytes = new Uint8Array(rawPayload);
-      } else if (typeof rawPayload === 'string') {
-        cipherBytes = new Uint8Array(rawPayload.length);
-        for (let i = 0; i < rawPayload.length; i++) {
-          cipherBytes[i] = rawPayload.charCodeAt(i);
+      // 解析绝对安全的 Hex 字符串
+      if (typeof rawPayload === 'string') {
+        let hexStr = rawPayload.trim();
+        cipherBytes = new Uint8Array(hexStr.length / 2);
+        for (let i = 0; i < hexStr.length; i += 2) {
+          cipherBytes[i / 2] = parseInt(hexStr.substring(i, i + 2), 16);
         }
       } else {
-        hilog.error(0x0000, 'MQTT_BUS', '❌ 收到未知类型的数据载荷');
-        return;
+        return; // 防御性拦截
       }
 
+      // 送入 AES 引擎解密
       let decryptedText: string = await CryptoUtil.decrypt(cipherBytes);
-
       if (!decryptedText) {
-        hilog.error(0x0000, 'MQTT_BUS', '❌ 解密失败或防篡改校验未通过，已丢弃该报文！');
+        hilog.error(0x0000, 'MQTT_BUS', '❌ 解密失败或校验未通过！');
         return;
       }
 
