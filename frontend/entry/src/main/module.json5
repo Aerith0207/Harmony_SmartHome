@@ -62,6 +62,17 @@
           ],
           "when": "always"
         }
+      },
+      // 👇 必须新增这一个大块：麦克风权限
+      {
+        "name": "ohos.permission.MICROPHONE",
+        "reason": "$string:module_desc", // 借用已有的字符串资源防报错
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
       }
     ]
   }

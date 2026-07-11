@@ -1,10 +1,50 @@
 // frontend/entry/src/main/ets/features/home/HomePage.ets
 
+import promptAction from '@ohos.promptAction';
 import { MqttBusService } from '../../network/mqtt';
 import { SensorDataModel } from '../../models/DeviceModels';
 import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
+
+// ==========================================
+// 新增：门禁安全验证弹窗组件
+// ==========================================
+@CustomDialog
+export struct DoorAuthDialog {
+  controller: CustomDialogController;
+  @State inputPwd: string = '';
+  onAuthSuccess: () => void = () => {};
+  isNightMode: boolean = false;
+
+  build() {
+    Column({ space: 20 }) {
+      Text('🛡️门禁安全验证').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+
+      TextInput({ placeholder: '请输入6位安全密码', text: this.inputPwd })
+        .type(InputType.Password)
+        .onChange((val) => this.inputPwd = val)
+        .height(48).borderRadius(12)
+        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
+        .fontColor(this.isNightMode ? '#FFF' : '#333')
+
+      Row({ space: 16 }) {
+        Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)').fontColor(this.isNightMode ? '#FFF' : '#333')
+          .onClick(() => this.controller.close())
+        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF')
+          .onClick(() => {
+            if (this.inputPwd === '123456') {
+              this.onAuthSuccess();
+              this.controller.close();
+            } else {
+              promptAction.showToast({ message: '密码错误，拒绝访问' });
+            }
+          })
+      }.width('100%')
+    }
+    .padding(24).backgroundColor(this.isNightMode ? '#1E1E1E' : '#FFFFFF').borderRadius(24)
+  }
+}
 
 @Component
 struct MiniBarChart {
@@ -16,7 +56,6 @@ struct MiniBarChart {
   build() {
     Column({ space: 12 }) {
       Row() {
-        // 🌟 夜间小标题提亮
         Text(this.title).fontSize(12).fontColor(this.isNightMode ? '#B0BEC5' : '#556677')
         Blank()
         Row({ space: 4 }) {
@@ -60,7 +99,6 @@ struct DeviceTag {
     Row({ space: 6 }) {
       Circle({ width: 6, height: 6 }).fill(this.color).shadow({ radius: this.active ? 10 : 0, color: this.color })
         .animation({ duration: 300, curve: Curve.EaseInOut })
-      // 🌟 夜间未激活标签提亮透明度：0.5 -> 0.8
       Text(this.name).fontSize(11).fontWeight(FontWeight.Bold).fontColor(this.active ? '#FFF' : (this.isNightMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.5)'))
         .animation({ duration: 300 })
     }
@@ -104,7 +142,6 @@ struct RoomGrid {
       }.alignItems(HorizontalAlign.Center)
 
       Row({ space: 24 }) {
-        // 🌟 夜间网格底部文字全线提亮：说明文字用 #A0AAB5，数值用近白 #E0E0E0
         Column({ space: 4 }) { Text(this.sub1Lbl).fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.sub1Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
         Column({ space: 4 }) { Text(this.sub2Lbl).fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.sub2Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
       }.justifyContent(FlexAlign.Center)
@@ -143,6 +180,25 @@ export struct HomePage {
 
   @StorageLink('global_tempTrend') tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
   @StorageLink('global_cryptoTraffic') cryptoTrafficData: number[] = [20, 80, 35, 90, 15, 60, 45, 75, 25, 85, 55, 40, 70, 30, 65, 20, 80, 40, 95, 30];
+
+  // 🌟 注册门禁验证控制器
+  doorAuthController: CustomDialogController = new CustomDialogController({
+    builder: DoorAuthDialog({
+      isNightMode: this.isNightMode,
+      onAuthSuccess: () => {
+        animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
+          this.isDoorLocked = false;
+          DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, false));
+          this.aiLog = `[DOOR ACCESS] 门禁系统已远程解锁`;
+          this.aiLogColor = '#FF9100';
+          promptAction.showToast({ message: '身份验证通过，门锁已开启' });
+        });
+      }
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    customStyle: true
+  });
 
   aboutToAppear() {
     MqttBusService.getInstance().registerSensorListener((data: SensorDataModel) => {
@@ -209,7 +265,6 @@ export struct HomePage {
 
       Column({ space: 30 }) {
         Column() {
-          // 🌟 夜间主拓扑说明文字提亮
           Text('全息空间设备拓扑').fontSize(14).fontColor(this.isNightMode ? '#B0BEC5' : '#556677').margin({ bottom: 16 }).alignSelf(ItemAlign.Start)
 
           Column() {
@@ -248,13 +303,11 @@ export struct HomePage {
 
                   Row({ space: 4 }) {
                     Text(this.isDoorLocked ? '设防中' : '已解锁').fontSize(26).fontWeight(FontWeight.Bolder).fontColor(this.isDoorLocked ? (this.isNightMode ? '#00E5FF' : '#007799') : '#FF1744')
-                    // 🌟 独立状态词提亮
                     Text('STATUS').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888').margin({ bottom: 4 })
                   }.alignItems(VerticalAlign.Bottom)
                 }.alignItems(HorizontalAlign.Center)
 
                 Row({ space: 24 }) {
-                  // 🌟 门禁卡片底部信息提亮
                   Column({ space: 4 }) { Text('门锁电量').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text('85%').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
                   Column({ space: 4 }) { Text('门磁状态').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.isDoorLocked ? '闭合' : '开启').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
                 }.justifyContent(FlexAlign.Center)
@@ -269,12 +322,19 @@ export struct HomePage {
               .layoutWeight(1).height('100%').border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' })
               .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
               .onClick(() => {
-                animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
-                  this.isDoorLocked = !this.isDoorLocked;
-                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, this.isDoorLocked));
-                  this.aiLog = `[DOOR ACCESS] 门禁系统已${this.isDoorLocked ? '设防' : '远程解锁'}`;
-                  this.aiLogColor = this.isDoorLocked ? '#00E5FF' : '#FF9100';
-                });
+                // 🌟 核心修改：门禁逻辑被弹窗拦截
+                if (this.isDoorLocked) {
+                  // 如果是上锁状态，想要解锁，必须弹出密码框
+                  this.doorAuthController.open();
+                } else {
+                  // 如果是解锁状态，直接上锁
+                  animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
+                    this.isDoorLocked = true;
+                    DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true));
+                    this.aiLog = `[DOOR ACCESS] 门禁系统已设防`;
+                    this.aiLogColor = '#00E5FF';
+                  });
+                }
               })
             }.width('100%').layoutWeight(1)
           }
@@ -310,7 +370,6 @@ export struct HomePage {
 
   @Builder StatusIndicator(lbl: string, val: string, clr: string) {
     Column() {
-      // 🌟 夜间顶部状态说明字提亮
       Text(lbl).fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888').margin({ bottom: 4 })
       Text(val).fontSize(12).fontWeight(FontWeight.Bold).fontColor(clr)
     }.alignItems(HorizontalAlign.End)
