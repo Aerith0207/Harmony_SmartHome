@@ -1,10 +1,17 @@
-// frontend/entry/src/main/ets/features/climate/ControlPage.ets
-
 import hilog from '@ohos.hilog';
+import promptAction from '@ohos.promptAction';
+// 🌟 新增的权限申请与音频控制导入
+import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
+import common from '@ohos.app.ability.common';
+import { AsrService } from '../../network/AsrService';
+import { AudioCaptureUtil } from '../../core/utils/AudioCaptureUtil';
+
 import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
 import { AiDecisionEngine, AiCommand } from '../ai/AiDecisionEngine';
+import { CryptoUtil } from '../../core/utils/CryptoUtil';
+import { MqttBusService } from '../../network/mqtt';
 
 // ==========================================
 // 独立响应式组件区
@@ -64,7 +71,6 @@ struct SceneCard {
   }
 }
 
-// 🌟 全新的方形图标按钮组件
 @Component
 struct DeviceIconButton {
   @Prop icon: string;
@@ -77,14 +83,12 @@ struct DeviceIconButton {
 
   build() {
     Column() {
-      // 顶部：图标与状态小圆点
       Row() {
         Text(this.icon).fontSize(26).opacity(this.isOn ? 1 : 0.5)
         Blank()
         Circle({ width: 8, height: 8 }).fill(this.isOn ? '#FFF' : 'transparent')
       }.width('100%').margin({ bottom: 16 })
 
-      // 底部：设备名与状态描述
       Column() {
         Text(this.name).fontSize(14).fontWeight(FontWeight.Bold)
           .fontColor(this.isOn ? '#FFF' : (this.isNightMode ? '#FFF' : '#1A1A1A'))
@@ -93,12 +97,12 @@ struct DeviceIconButton {
           .margin({ top: 4 })
       }.alignItems(HorizontalAlign.Start).width('100%')
     }
-    .layoutWeight(1) // 自动均分宽度
+    .layoutWeight(1)
     .padding(16)
     .backgroundColor(this.isOn ? this.activeColor : (this.isNightMode ? 'rgba(128,128,128,0.05)' : 'rgba(0,0,0,0.03)'))
     .borderRadius(20)
     .border({ width: 1, color: this.isOn ? this.activeColor : (this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)') })
-    .shadow(this.isOn ? { radius: 15, color: this.activeColor + '80', offsetY: 5 } : { radius: 0 }) // 激活时发光
+    .shadow(this.isOn ? { radius: 15, color: this.activeColor + '80', offsetY: 5 } : { radius: 0 })
     .animation({ duration: 300, curve: Curve.FastOutSlowIn })
     .onClick(() => this.toggleAction(!this.isOn))
   }
@@ -112,13 +116,13 @@ export struct AiConfirmDialog {
 
   build() {
     Column() {
-      Text('🧠 AI 智能场景决策')
+      Text('🧠 AI智能场景决策')
         .fontSize(20).fontWeight(FontWeight.Bold).fontColor('#333').margin({ bottom: 15 })
 
       ForEach(this.strategyList, (item: AiCommand) => {
         Row() {
-          Text(`设备: ${item.device} `).fontColor('#666').fontSize(16)
-          Text(`动作: ${item.action} -> ${item.value}`).fontColor('#00E5FF').fontSize(16).fontWeight(FontWeight.Medium)
+          Text(`设备:${item.device} `).fontColor('#666').fontSize(16)
+          Text(`动作:${item.action}->${item.value}`).fontColor('#00E5FF').fontSize(16).fontWeight(FontWeight.Medium)
         }.width('100%').margin({ bottom: 10 }).padding({ left: 10, right: 10 })
       }, (item: AiCommand, index: number) => index.toString())
 
@@ -136,6 +140,43 @@ export struct AiConfirmDialog {
       }.margin({ top: 20 }).width('100%')
     }
     .padding(24).backgroundColor(Color.White).borderRadius(24)
+  }
+}
+
+// 将此组件添加到 ControlPage.ets 顶部的组件区
+@CustomDialog
+export struct DoorAuthDialog {
+  controller: CustomDialogController;
+  @State inputPwd: string = '';
+  onAuthSuccess: () => void = () => {};
+  isNightMode: boolean = false;
+
+  build() {
+    Column({ space: 20 }) {
+      Text('🛡️ 门禁安全验证').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+
+      TextInput({ placeholder: '请输入6位安全密码 (演示: 123456)', text: this.inputPwd })
+        .type(InputType.Password)
+        .onChange((val) => this.inputPwd = val)
+        .height(48).borderRadius(12)
+        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
+        .fontColor(this.isNightMode ? '#FFF' : '#333')
+
+      Row({ space: 16 }) {
+        Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)').fontColor(this.isNightMode ? '#FFF' : '#333')
+          .onClick(() => this.controller.close())
+        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF')
+          .onClick(() => {
+            if (this.inputPwd === '123456') {
+              this.onAuthSuccess();
+              this.controller.close();
+            } else {
+              promptAction.showToast({ message: '❌ 密码错误，拒绝访问' });
+            }
+          })
+      }.width('100%')
+    }
+    .padding(24).backgroundColor(this.isNightMode ? '#1E1E1E' : '#FFFFFF').borderRadius(24)
   }
 }
 
@@ -165,7 +206,6 @@ export struct ControlPage {
   @State showTimePicker: boolean = false;
   @State isListening: boolean = false;
 
-  // 👇 新增这两个变量
   @State timerMessage: string = '🕒 设定定时关机';
   @State acTimerId: number = -1;
 
@@ -195,17 +235,57 @@ export struct ControlPage {
     alignment: DialogAlignment.Center
   });
 
+  doorAuthController: CustomDialogController = new CustomDialogController({
+    builder: DoorAuthDialog({
+      isNightMode: this.isNightMode,
+      onAuthSuccess: () => {
+        // 密码正确后，才真正执行开门指令
+        this.isDoorLocked = false;
+        DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, false));
+        promptAction.showToast({ message: '✅ 身份验证通过，门锁已开启' });
+      }
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    customStyle: true
+  });
+
+  // 🌟 动态申请麦克风权限
+  aboutToAppear() {
+    let atManager = abilityAccessCtrl.createAtManager();
+    let context = getContext(this) as common.UIAbilityContext;
+    atManager.requestPermissionsFromUser(context, ['ohos.permission.MICROPHONE']).then((data) => {
+      hilog.info(0x0000, 'PERM', '麦克风权限申请结果:' + data.authResults[0]);
+    });
+  }
+
   async triggerAiAssistant(intent: string) {
     this.isAiLoading = true;
     let temp = parseFloat(this.currentTemp);
     let hum = parseFloat(this.currentHum);
 
-    let strategy = await AiDecisionEngine.requestStrategy(intent, temp, hum);
+    // 🌟 接收全新的复合结果
+    let result = await AiDecisionEngine.requestStrategy(intent, temp, hum);
     this.isAiLoading = false;
 
-    if (strategy && strategy.length > 0) {
-      this.currentAiStrategy = strategy;
+    // 🌟 分流处理逻辑
+    if (result.type === 'CONTROL' && result.commands.length > 0) {
+      // 1. 如果是控制指令，且解析出了实际动作，弹出熟悉的授权执行框
+      this.currentAiStrategy = result.commands;
       this.dialogController.open();
+    } else {
+      // 2. 如果是 ADVICE (建议) 或 NONE (闲聊/越权)，直接用极其优雅的原生对话框与用户交流
+      AlertDialog.show({
+        title: result.type === 'ADVICE' ? '💡 AI 管家建议' : '🤖 AI 智能回复',
+        message: result.message, // 展示大模型想对用户说的话
+        autoCancel: true,
+        alignment: DialogAlignment.Center,
+        confirm: {
+          value: '明白了',
+          fontColor: this.isNightMode ? '#00E5FF' : '#007799',
+          action: () => {}
+        }
+      });
     }
   }
 
@@ -217,11 +297,10 @@ export struct ControlPage {
         Row() {
           Text('控制中心').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
           Blank()
-          Text('Protocol: Universal_V2').fontColor(this.isNightMode ? '#B0BEC5' : '#8899AA').fontSize(12).fontFamily('monospace')
+          Text('Protocol:Universal_V2').fontColor(this.isNightMode ? '#B0BEC5' : '#8899AA').fontSize(12).fontFamily('monospace')
         }.width('100%')
 
         Row({ space: 24 }) {
-          // 左侧：空调控制面板
           Column() {
             Row() {
               Text('HVAC Climate Control').fontSize(12).fontColor(this.isNightMode ? '#00E5FF' : '#007799').letterSpacing(2)
@@ -251,7 +330,7 @@ export struct ControlPage {
                 Text('TARGET').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888')
                 Text(`${this.targetTemp}℃`).fontSize(48).fontWeight(FontWeight.Bolder).fontColor(this.isAcOn ? (this.isNightMode ? '#00E5FF' : '#007799') : (this.isNightMode ? '#8899AA' : '#888')).margin({ top: 4, bottom: 4 })
                   .animation({ duration: 400, curve: Curve.EaseInOut })
-                Text(this.isAcOn ? `MODE: ${this.acMode === 0 ? 'COOL' : this.acMode === 1 ? 'HEAT' : 'DRY'}` : 'OFFLINE').fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744')
+                Text(this.isAcOn ? `MODE:${this.acMode === 0 ? 'COOL' : this.acMode === 1 ? 'HEAT' : 'DRY'}` : 'OFFLINE').fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744')
                   .animation({ duration: 400 })
               }
             }.margin({ bottom: 20 })
@@ -269,7 +348,7 @@ export struct ControlPage {
                     DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.TEMPERATURE, this.targetTemp));
                   }
                 })
-              Button(this.isAcOn ? '关 闭' : '开 启').width(110).height(50).fontSize(16).fontWeight(FontWeight.Bold)
+              Button(this.isAcOn ? '关闭' : '开启').width(110).height(50).fontSize(16).fontWeight(FontWeight.Bold)
                 .backgroundColor(this.isAcOn ? '#FF1744' : '#1976D2').borderRadius(25)
                 .animation({ duration: 600, curve: Curve.EaseOut })
                 .onClick(() => {
@@ -301,7 +380,6 @@ export struct ControlPage {
               .backgroundColor(this.isNightMode ? 'rgba(0, 229, 255, 0.1)' : 'rgba(0, 119, 153, 0.1)')
               .fontColor(this.isNightMode ? '#00E5FF' : '#007799').borderRadius(20)
               .onClick(() => {
-                // 如果已经设定了定时，再次点击就是取消定时
                 if (this.acTimerId !== -1) {
                   clearTimeout(this.acTimerId);
                   this.acTimerId = -1;
@@ -309,34 +387,27 @@ export struct ControlPage {
                   return;
                 }
 
-                // 调用鸿蒙原生的时间选择器弹窗
                 TimePickerDialog.show({
-                  useMilitaryTime: true, // 使用 24 小时制
+                  useMilitaryTime: true,
                   onAccept: (value: TimePickerResult) => {
                     let targetHour = value.hour;
                     let targetMinute = value.minute;
+                    this.timerMessage = `🕒 已定时 ${targetHour.toString().padStart(2, '0')}:${targetMinute.toString().padStart(2, '0')} 关机(点击取消)`;
 
-                    // 更新按钮的文字提示
-                    this.timerMessage = `🕒 已定时 ${targetHour.toString().padStart(2, '0')}:${targetMinute.toString().padStart(2, '0')} 关机 (点击取消)`;
-
-                    // 获取当前时间，计算还要多久关机
                     let now = new Date();
                     let targetTime = new Date();
                     targetTime.setHours(targetHour, targetMinute, 0, 0);
 
-                    // 如果设定的时间比当前早，说明是第二天的这个时间
                     if (targetTime.getTime() <= now.getTime()) {
                       targetTime.setDate(targetTime.getDate() + 1);
                     }
 
                     let delayMs = targetTime.getTime() - now.getTime();
 
-                    // 设定延时任务，时间到了自动关机
                     this.acTimerId = setTimeout(() => {
                       this.isAcOn = false;
                       this.timerMessage = '🕒 设定定时关机';
                       this.acTimerId = -1;
-                      // 发送 MQTT 关机指令
                       DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, false));
                     }, delayMs);
                   }
@@ -348,14 +419,13 @@ export struct ControlPage {
           .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.85)')
           .borderRadius(24).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)' })
 
-          // 右侧：AI 辅助与设备列表
           Column({ space: 24 }) {
             Column({ space: 12 }) {
               Text('Smart Scenes & AI语音交互').fontSize(12).fontColor(this.isNightMode ? '#00E5FF' : '#007799').letterSpacing(2).alignSelf(ItemAlign.Start)
 
               Row({ space: 8 }) {
-                TextInput({ placeholder: '在此输入或点击右侧语音...', text: this.userInputIntent })
-                  .layoutWeight(1).height(48).borderRadius(24)
+                TextInput({ placeholder: '在此输入或长按右侧按钮...', text: this.userInputIntent })
+                  .layoutWeight(1).height(40).borderRadius(20)
                   .backgroundColor(this.isNightMode ? 'rgba(128,128,128,0.1)' : 'rgba(255,255,255,0.7)')
                   .fontColor(this.isNightMode ? '#FFF' : '#333')
                   .placeholderColor(this.isNightMode ? '#A0AAB5' : '#888')
@@ -364,18 +434,46 @@ export struct ControlPage {
                     if(this.userInputIntent.trim() !== '') this.triggerAiAssistant(this.userInputIntent);
                   })
 
-                Button('🎤').width(48).height(48).borderRadius(24).fontSize(20)
+                // 🌟 纯文本化，固定宽度，加入防崩溃与弹窗提示
+                Button(this.isListening ? '倾听中...' : '按住说话')
+                  .width(96).height(40).borderRadius(20)
+                  .fontSize(14).fontWeight(FontWeight.Bold)
                   .backgroundColor(this.isListening ? '#FF1744' : (this.isNightMode ? 'rgba(0, 229, 255, 0.2)' : 'rgba(0, 119, 153, 0.2)'))
                   .fontColor(this.isListening ? '#FFF' : (this.isNightMode ? '#00E5FF' : '#007799'))
                   .animation({duration: 300})
-                  .onClick(() => {
-                    this.isListening = !this.isListening;
-                    if(this.isListening) {
-                      setTimeout(()=>{
-                        this.userInputIntent = "太热了，帮我把空调调到22度并开灯";
-                        this.isListening = false;
+                  .onTouch(async (event: TouchEvent) => {
+                    if (event.type === TouchType.Down) {
+                      this.isListening = true;
+                      this.userInputIntent = '正在录音...';
+                      AudioCaptureUtil.startRecording();
+                    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                      this.isListening = false;
+                      this.isAiLoading = true;
+                      this.userInputIntent = '正在处理...';
+
+                      // 1. 获取录音数据
+                      let audioData = await AudioCaptureUtil.stopRecording();
+
+                      // 🌟 诊断点 1：如果录音是空的，直接弹窗拦截
+                      if (!audioData || audioData.byteLength === 0) {
+                        this.isAiLoading = false;
+                        this.userInputIntent = '';
+                        promptAction.showToast({ message: '⚠️ 模拟器未捕获到音频数据，请检查麦克风映射' });
+                        return;
+                      }
+
+                      // 2. 发送给云端识别
+                      let text = await AsrService.recognize(audioData);
+                      this.isAiLoading = false;
+
+                      // 🌟 诊断点 2：如果云端返回为空，弹窗提示查日志
+                      if (text.trim() !== '') {
+                        this.userInputIntent = text.replace(/[。，？！]/g, "");
                         this.triggerAiAssistant(this.userInputIntent);
-                      }, 2000);
+                      } else {
+                        this.userInputIntent = '';
+                        promptAction.showToast({ message: '❌ 云端识别失败，请检查 API Key 或查看日志' });
+                      }
                     }
                   })
               }.width('100%')
@@ -401,7 +499,6 @@ export struct ControlPage {
             Column({ space: 12 }) {
               Text('快捷设备').fontSize(12).fontColor(this.isNightMode ? '#00E5FF' : '#007799').letterSpacing(2).alignSelf(ItemAlign.Start)
 
-              // 🌟 全新布局：横向排列的图标卡片按钮
               Row({ space: 12 }) {
                 DeviceIconButton({
                   icon: '💡', name: '客厅主灯', stateText: this.isMainLightOn ? '已点亮' : '已关闭',
@@ -416,8 +513,14 @@ export struct ControlPage {
                   icon: '🔓', name: '智能门锁', stateText: !this.isDoorLocked ? '已解锁' : '设防中',
                   isOn: !this.isDoorLocked, activeColor: '#00E5FF', isNightMode: this.isNightMode,
                   toggleAction: (val) => {
-                    this.isDoorLocked = !val;
-                    DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, !val));
+                    // 如果是要开锁，必须弹出密码框拦截
+                    if (val === true) {
+                      this.doorAuthController.open();
+                    } else {
+                      // 如果是重新上锁，不需要密码，直接锁
+                      this.isDoorLocked = true;
+                      DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true));
+                    }
                   }
                 })
 
@@ -431,6 +534,27 @@ export struct ControlPage {
                 })
               }.width('100%')
             }
+
+            Button('⚙️触发本地AES解密回环测试')
+              .width('100%').height(45).margin({ top: 20 })
+              .backgroundColor('#FF9100')
+              .onClick(async () => {
+                let mockData: Record<string, number> = { "temp": 26, "humi": 50, "light_sw": 1 };
+                let mockStatus = JSON.stringify(mockData);
+                let cipherBytes = await CryptoUtil.encrypt(mockStatus);
+
+                let hexString = "";
+                for (let i = 0; i < cipherBytes.length; i++) {
+                  let hex = cipherBytes[i].toString(16).toUpperCase();
+                  hexString += (hex.length === 1 ? "0" + hex : hex);
+                }
+
+                MqttBusService.getInstance().client?.publish({
+                  topic: 'smart_home/status',
+                  payload: hexString,
+                  qos: 0
+                });
+              })
 
           }.layoutWeight(55).height('100%')
 
