@@ -7,8 +7,6 @@ import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
 
-// ... (此处保留原有的 DoorAuthDialog, MiniBarChart, DeviceTag, RoomGrid 组件，保持不变) ...
-
 @CustomDialog
 export struct DoorAuthDialog {
   controller: CustomDialogController;
@@ -26,7 +24,6 @@ export struct DoorAuthDialog {
         .height(48).borderRadius(12)
         .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA')
         .fontColor(this.isNightMode ? '#FFF' : '#333')
-        // 🌟 修复点：动态指定占位符的颜色，确保在黑夜模式下清晰可见
         .placeholderColor(this.isNightMode ? '#8899AA' : '#888')
 
       Row({ space: 16 }) {
@@ -48,7 +45,7 @@ struct MiniBarChart {
   build() {
     Column({ space: 12 }) {
       Row() {
-        Text(this.title).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#B0BEC5' : '#556677')
+        Text(this.title).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFFFFF' : '#556677')
         Blank()
         Row({ space: 4 }) {
           Circle({ width: 6, height: 6 }).fill(this.color)
@@ -72,7 +69,7 @@ struct MiniBarChart {
       .alignItems(VerticalAlign.Bottom)
       .border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' })
     }
-    .layoutWeight(1).padding(20)
+    .layoutWeight(1).height('100%').padding(20)
     .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')
     .borderRadius(20).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)' })
   }
@@ -95,7 +92,6 @@ export struct HomePage {
   @StorageLink('global_isAcOn') isAcOn: boolean = false;
 
   @StorageLink('global_tempTrend') tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
-  @StorageLink('global_cryptoTraffic') cryptoTrafficData: number[] = [20, 80, 35, 90, 15, 60, 45, 75, 25, 85, 55, 40, 70, 30, 65, 20, 80, 40, 95, 30];
 
   doorAuthController: CustomDialogController = new CustomDialogController({
     builder: DoorAuthDialog({
@@ -131,10 +127,6 @@ export struct HomePage {
       this.currentTime = `${hour.toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
       if(hour >= 6 && hour < 12) this.greeting = '早上好'; else if(hour >= 12 && hour < 18) this.greeting = '下午好'; else this.greeting = '晚上好';
       this.cpuLoad = Math.floor(Math.random() * 20) + 20;
-      animateTo({ duration: 800, curve: Curve.Linear }, () => {
-        let newCryptoChart = [...this.cryptoTrafficData]; newCryptoChart.shift(); newCryptoChart.push(Math.floor(Math.random() * 80) + 20);
-        this.cryptoTrafficData = newCryptoChart;
-      });
     }, 1000);
   }
 
@@ -178,7 +170,6 @@ export struct HomePage {
           Row() {
             Column({ space: 8 }) {
               Row({ space: 4 }) {
-                // 🌟 添加 textShadow 增强夜间高亮对比度
                 Text(this.realTemp).fontSize(72).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
                   .textShadow(this.isNightMode ? { radius: 4, color: 'rgba(0,0,0,0.8)', offsetX: 1, offsetY: 2 } : { radius: 0 })
                 Text('℃').fontSize(24).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ bottom: 12 })
@@ -190,7 +181,6 @@ export struct HomePage {
 
             Column({ space: 8 }) {
               Row({ space: 4 }) {
-                // 🌟 添加 textShadow
                 Text(this.realHum).fontSize(72).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
                   .textShadow(this.isNightMode ? { radius: 4, color: 'rgba(0,0,0,0.8)', offsetX: 1, offsetY: 2 } : { radius: 0 })
                 Text('%').fontSize(24).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ bottom: 12 })
@@ -222,7 +212,6 @@ export struct HomePage {
           }.alignItems(VerticalAlign.Center).width('100%')
 
           Column({ space: 16 }) {
-            // 🌟 添加 textShadow
             Text(this.isDoorLocked ? '设防中' : '已解锁')
               .fontSize(64).fontWeight(FontWeight.Bolder)
               .fontColor(this.isDoorLocked ? (this.isNightMode ? '#00E5FF' : '#007799') : '#FF1744')
@@ -248,11 +237,53 @@ export struct HomePage {
         })
       }.width('85%').height(360)
 
+      // 🌟 核心：用 Blank 彻底撑开中间留白，把底部卡片压下去
+      Blank()
+
+      // ================= 3. 底部次级卡片区 (紧凑高度 140) =================
       Row({ space: 32 }) {
         MiniBarChart({ title: '全屋温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode })
-        MiniBarChart({ title: '底层端到端加密吞吐率 (实时)', dataArray: this.cryptoTrafficData, color: '#7B61FF', isNightMode: this.isNightMode })
-      }.width('85%').justifyContent(FlexAlign.SpaceBetween).layoutWeight(1)
 
+        // 🌟 智能管家机器人面板
+        Column() {
+          Row() {
+            Text('智能管家机器人 (AI Agent)').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFFFFF' : '#556677')
+            Blank()
+            Row({ space: 4 }) {
+              Circle({ width: 6, height: 6 }).fill('#00FF00').shadow({ radius: 4, color: '#00FF00' })
+              Text('ACTIVE').fontSize(12).fontColor('#00FF00').fontWeight(FontWeight.Bold)
+            }
+          }.width('100%')
+
+          Row({ space: 16 }) {
+            // 🤖 动态判断昼夜，调用不同的头像
+            Image(this.isNightMode ? $r('app.media.robot_avatar_night') : $r('app.media.robot_avatar_day'))
+              .width(64)
+              .height(64)
+              .borderRadius(32)
+              .objectFit(ImageFit.Cover)
+              .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
+              .border({ width: 2, color: this.isNightMode ? '#FFFFFF' : '#007799' })
+
+            Column({ space: 6 }) {
+              Text('System Online').fontSize(16).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFFFFF' : '#007799')
+              Text('全环境感知中枢已接管，正在默默守护您的居住健康。').fontSize(11).fontColor(this.isNightMode ? '#FFFFFF' : '#666').lineHeight(16).opacity(this.isNightMode ? 0.9 : 1)
+
+              Row() {
+                Text('⚡ 满电').fontSize(10).fontColor('#00FF00')
+                Blank()
+                Text('🧠 大模型已挂载').fontSize(10).fontColor(this.isNightMode ? '#FFFFFF' : '#888').opacity(this.isNightMode ? 0.8 : 1)
+              }.width('100%').margin({ top: 4 })
+            }.layoutWeight(1).alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Center)
+          }.width('100%').margin({ top: 12 }) // 控制头像和标题的紧凑距离
+        }
+        .layoutWeight(1).height('100%').padding(20)
+        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')
+        .borderRadius(20).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)' })
+
+      }.width('85%').height(140).justifyContent(FlexAlign.SpaceBetween)
+
+      // ================= 4. 底部 AI 跑马灯日志区 =================
       Row() {
         Text('⚡ AI ENGINE EVENT:').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.aiLogColor).margin({ right: 12 })
         Text(this.aiLog).fontSize(14).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontFamily('monospace')
