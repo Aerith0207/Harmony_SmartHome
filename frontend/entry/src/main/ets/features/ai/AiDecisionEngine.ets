@@ -80,7 +80,7 @@ export class AiDecisionEngine {
     requestBody.temperature = 0.1; // 极低温度，保证 JSON 输出稳定
 
     try {
-      let realApiKey = "sk-ac590b614b644f038831e07a87f82c81";
+      let realApiKey = "";
 
       let response = await httpRequest.request(AiDecisionEngine.API_URL, {
         method: http.RequestMethod.POST,
