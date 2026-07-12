@@ -15,8 +15,8 @@ class BaiduAsrRequest {
 }
 
 export class AsrService {
-  private static readonly API_KEY = '';//在此处填入百度的API_KEY
-  private static readonly SECRET_KEY = '';//在此处填入百度的SECRET_KEY
+  private static readonly API_KEY = '';//API_KEY
+  private static readonly SECRET_KEY = '';//SECRET_KEY
 
   private static accessToken: string = '';
   private static tokenExpireTime: number = 0;

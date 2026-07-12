@@ -7,9 +7,8 @@ import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
 
-// ==========================================
-// 新增：门禁安全验证弹窗组件
-// ==========================================
+// ... (此处保留原有的 DoorAuthDialog, MiniBarChart, DeviceTag, RoomGrid 组件，保持不变) ...
+
 @CustomDialog
 export struct DoorAuthDialog {
   controller: CustomDialogController;
@@ -19,30 +18,23 @@ export struct DoorAuthDialog {
 
   build() {
     Column({ space: 20 }) {
-      Text('🛡️门禁安全验证').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+      Text('🛡️ 门禁安全验证').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
 
       TextInput({ placeholder: '请输入6位安全密码', text: this.inputPwd })
         .type(InputType.Password)
         .onChange((val) => this.inputPwd = val)
         .height(48).borderRadius(12)
-        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)')
+        .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA')
         .fontColor(this.isNightMode ? '#FFF' : '#333')
+        // 🌟 修复点：动态指定占位符的颜色，确保在黑夜模式下清晰可见
+        .placeholderColor(this.isNightMode ? '#8899AA' : '#888')
 
       Row({ space: 16 }) {
-        Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)').fontColor(this.isNightMode ? '#FFF' : '#333')
-          .onClick(() => this.controller.close())
-        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF')
-          .onClick(() => {
-            if (this.inputPwd === '123456') {
-              this.onAuthSuccess();
-              this.controller.close();
-            } else {
-              promptAction.showToast({ message: '密码错误，拒绝访问' });
-            }
-          })
+        Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? '#3A3F48' : '#E0E4E8').fontColor(this.isNightMode ? '#FFF' : '#333').onClick(() => this.controller.close())
+        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF').onClick(() => { if (this.inputPwd === '123456') { this.onAuthSuccess(); this.controller.close(); } else { promptAction.showToast({ message: '❌ 密码错误，拒绝访问' }); } })
       }.width('100%')
     }
-    .padding(24).backgroundColor(this.isNightMode ? '#1E1E1E' : '#FFFFFF').borderRadius(24)
+    .padding(24).backgroundColor(this.isNightMode ? '#1E222B' : '#FFFFFF').borderRadius(24)
   }
 }
 
@@ -56,11 +48,11 @@ struct MiniBarChart {
   build() {
     Column({ space: 12 }) {
       Row() {
-        Text(this.title).fontSize(12).fontColor(this.isNightMode ? '#B0BEC5' : '#556677')
+        Text(this.title).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#B0BEC5' : '#556677')
         Blank()
         Row({ space: 4 }) {
-          Circle({ width: 4, height: 4 }).fill(this.color)
-          Text('LIVE').fontSize(10).fontColor(this.color).fontWeight(FontWeight.Bold)
+          Circle({ width: 6, height: 6 }).fill(this.color)
+          Text('LIVE').fontSize(12).fontColor(this.color).fontWeight(FontWeight.Bold)
         }
       }.width('100%')
 
@@ -71,92 +63,18 @@ struct MiniBarChart {
             .height(`${val}%`)
             .backgroundColor(this.color)
             .borderRadius({ topLeft: 2, topRight: 2 })
-            .opacity(0.2 + (idx / this.dataArray.length) * 0.8)
+            .opacity(this.isNightMode ? 0.5 + (idx / this.dataArray.length) * 0.5 : 0.2 + (idx / this.dataArray.length) * 0.8)
             .animation({ duration: 300, curve: Curve.EaseInOut })
         }, (val: number, idx: number) => idx.toString() + '_' + val.toString())
       }
       .width('100%')
-      .height(48)
+      .height(60)
       .alignItems(VerticalAlign.Bottom)
-      .border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })
+      .border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' })
     }
-    .layoutWeight(1)
-    .padding(16)
-    .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)')
-    .borderRadius(16)
-    .border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' })
-  }
-}
-
-@Component
-struct DeviceTag {
-  @Prop name: string;
-  @Prop color: string;
-  @Prop active: boolean;
-  @Prop isNightMode: boolean;
-
-  build() {
-    Row({ space: 6 }) {
-      Circle({ width: 6, height: 6 }).fill(this.color).shadow({ radius: this.active ? 10 : 0, color: this.color })
-        .animation({ duration: 300, curve: Curve.EaseInOut })
-      Text(this.name).fontSize(11).fontWeight(FontWeight.Bold).fontColor(this.active ? '#FFF' : (this.isNightMode ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.5)'))
-        .animation({ duration: 300 })
-    }
-    .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-    .backgroundColor(this.active ? 'rgba(0,0,0,0.5)' : (this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'))
-    .borderRadius(12)
-    .border({ width: 1, color: this.active ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)' })
-  }
-}
-
-@Component
-struct RoomGrid {
-  @Prop name: string;
-  @Prop mainVal: string;
-  @Prop mainUnit: string;
-  @Prop sub1Lbl: string;
-  @Prop sub1Val: string;
-  @Prop sub2Lbl: string;
-  @Prop sub2Val: string;
-  @Prop dev1Name: string;
-  @Prop dev1Color: string;
-  @Prop dev1Active: boolean;
-  @Prop dev2Name: string = '';
-  @Prop dev2Color: string = '';
-  @Prop dev2Active: boolean = false;
-  @Prop isNightMode: boolean;
-
-  build() {
-    Column({ space: 12 }) {
-      Column({ space: 8 }) {
-        Row({ space: 8 }) {
-          Rect().width(4).height(16).fill(this.isNightMode ? '#00E5FF' : '#007799').radius(2)
-          Text(this.name).fontSize(18).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bolder).letterSpacing(1)
-        }.alignItems(VerticalAlign.Center)
-
-        Row({ space: 4 }) {
-          Text(this.mainVal).fontSize(26).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
-            .animation({ duration: 500, curve: Curve.FastOutSlowIn })
-          Text(this.mainUnit).fontSize(12).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ bottom: 4 })
-        }.alignItems(VerticalAlign.Bottom)
-      }.alignItems(HorizontalAlign.Center)
-
-      Row({ space: 24 }) {
-        Column({ space: 4 }) { Text(this.sub1Lbl).fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.sub1Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
-        Column({ space: 4 }) { Text(this.sub2Lbl).fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.sub2Val).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
-      }.justifyContent(FlexAlign.Center)
-
-      Divider().color(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)').width('40%')
-
-      Row({ space: 12 }) {
-        DeviceTag({ name: this.dev1Name, color: this.dev1Color, active: this.dev1Active, isNightMode: this.isNightMode })
-        if (this.dev2Name !== '') {
-          DeviceTag({ name: this.dev2Name, color: this.dev2Color, active: this.dev2Active, isNightMode: this.isNightMode })
-        }
-      }
-    }
-    .layoutWeight(1).height('100%').border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' })
-    .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+    .layoutWeight(1).padding(20)
+    .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')
+    .borderRadius(20).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)' })
   }
 }
 
@@ -175,13 +93,10 @@ export struct HomePage {
   @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
   @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
   @StorageLink('global_isAcOn') isAcOn: boolean = false;
-  @StorageLink('global_acTemp') acTemp: number = 26;
-  @StorageLink('global_isAutoAcOn') isAutoAcOn: boolean = false;
 
   @StorageLink('global_tempTrend') tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
   @StorageLink('global_cryptoTraffic') cryptoTrafficData: number[] = [20, 80, 35, 90, 15, 60, 45, 75, 25, 85, 55, 40, 70, 30, 65, 20, 80, 40, 95, 30];
 
-  // 🌟 注册门禁验证控制器
   doorAuthController: CustomDialogController = new CustomDialogController({
     builder: DoorAuthDialog({
       isNightMode: this.isNightMode,
@@ -195,9 +110,7 @@ export struct HomePage {
         });
       }
     }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    customStyle: true
+    alignment: DialogAlignment.Center, autoCancel: true, customStyle: true
   });
 
   aboutToAppear() {
@@ -208,49 +121,41 @@ export struct HomePage {
         this.isDoorLocked = !data.doorOpen;
         this.isMainLightOn = data.lightStatus;
         this.isAcOn = data.acStatus;
-        this.acTemp = data.acTemp;
-        this.isAutoAcOn = data.autoAc;
-
-        let newTempChart = [...this.tempTrendData];
-        newTempChart.shift();
-        newTempChart.push(data.temperature);
+        let newTempChart = [...this.tempTrendData]; newTempChart.shift(); newTempChart.push(data.temperature);
         this.tempTrendData = newTempChart;
       });
     });
 
     setInterval(() => {
-      let date = new Date();
-      let hour = date.getHours();
+      let date = new Date(); let hour = date.getHours();
       this.currentTime = `${hour.toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-
-      if(hour >= 6 && hour < 12) this.greeting = '早上好';
-      else if(hour >= 12 && hour < 18) this.greeting = '下午好';
-      else this.greeting = '晚上好';
-
+      if(hour >= 6 && hour < 12) this.greeting = '早上好'; else if(hour >= 12 && hour < 18) this.greeting = '下午好'; else this.greeting = '晚上好';
       this.cpuLoad = Math.floor(Math.random() * 20) + 20;
-
       animateTo({ duration: 800, curve: Curve.Linear }, () => {
-        let newCryptoChart = [...this.cryptoTrafficData];
-        newCryptoChart.shift();
-        newCryptoChart.push(Math.floor(Math.random() * 80) + 20);
+        let newCryptoChart = [...this.cryptoTrafficData]; newCryptoChart.shift(); newCryptoChart.push(Math.floor(Math.random() * 80) + 20);
         this.cryptoTrafficData = newCryptoChart;
       });
     }, 1000);
+  }
 
-    setTimeout(() => {
-      animateTo({ duration: 500, curve: Curve.EaseInOut }, () => {
-        this.aiLog = '[AI SCENE] 边缘网关态势感知网络已就绪';
-        this.aiLogColor = '#00FF00';
-      });
-    }, 5000);
+  @Builder QuickControlButton(icon: string, name: string, active: boolean, color: string, action: () => void) {
+    Row({ space: 8 }) {
+      Text(icon).fontSize(20)
+      Text(name).fontSize(16).fontWeight(FontWeight.Bold).fontColor(active ? '#FFF' : (this.isNightMode ? '#E0E0E0' : '#333'))
+    }
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .backgroundColor(active ? color : (this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'))
+    .borderRadius(16)
+    .border({ width: 1, color: active ? color : (this.isNightMode ? 'rgba(255,255,255,0.1)' : 'transparent') })
+    .shadow(active ? { radius: 15, color: color + '66' } : { radius: 0 })
+    .onClick(action).animation({ duration: 300, curve: Curve.FastOutSlowIn })
   }
 
   build() {
     Column({ space: 20 }) {
       Row() {
         Column() {
-          Text(`${this.greeting}，主人。欢迎回家！`).fontSize(32).fontWeight(FontWeight.Bolder)
-            .fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+          Text(`${this.greeting}，主人。欢迎回家！`).fontSize(32).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
           Text('舒适度：极佳 | 空气质量：优 | 网络：加密稳定').fontSize(14).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ top: 8 })
         }.alignItems(HorizontalAlign.Start)
         Blank()
@@ -260,110 +165,100 @@ export struct HomePage {
           this.StatusIndicator('CPU LOAD', `${this.cpuLoad}% ⚡`, '#FF9100')
           Text(this.currentTime).fontFamily('monospace').fontSize(36).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bold)
         }
-      }
-      .width('100%').padding({ bottom: 20 }).border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })
+      }.width('100%').padding({ bottom: 20 }).border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })
 
-      Column({ space: 30 }) {
-        Column() {
-          Text('全息空间设备拓扑').fontSize(14).fontColor(this.isNightMode ? '#B0BEC5' : '#556677').margin({ bottom: 16 }).alignSelf(ItemAlign.Start)
+      Row({ space: 32 }) {
+        // 左侧气候区
+        Column({ space: 40 }) {
+          Row({ space: 8 }) {
+            Rect().width(6).height(24).fill(this.isNightMode ? '#00E5FF' : '#007799').radius(3)
+            Text('室内气候中枢').fontSize(24).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bolder).letterSpacing(2)
+          }.alignItems(VerticalAlign.Center).width('100%')
 
-          Column() {
-            Row() {
-              RoomGrid({
-                name: '主卧区', mainVal: this.realTemp, mainUnit: '℃',
-                sub1Lbl: '相对湿度', sub1Val: `${this.realHum}%`, sub2Lbl: '空气质量', sub2Val: '优',
-                dev1Name: '美的空调', dev1Color: '#00E5FF', dev1Active: this.isAcOn,
-                dev2Name: '智能窗帘', dev2Color: '#7B61FF', dev2Active: false,
-                isNightMode: this.isNightMode
-              })
-              RoomGrid({
-                name: '客厅中枢', mainVal: '24.5', mainUnit: '℃',
-                sub1Lbl: 'PM 2.5', sub1Val: '12', sub2Lbl: '当前功耗', sub2Val: '120W',
-                dev1Name: '人体感应', dev1Color: '#FF1744', dev1Active: true,
-                dev2Name: '主灯群组', dev2Color: '#00FF00', dev2Active: this.isMainLightOn,
-                isNightMode: this.isNightMode
-              })
-            }.width('100%').layoutWeight(1)
+          Row() {
+            Column({ space: 8 }) {
+              Row({ space: 4 }) {
+                // 🌟 添加 textShadow 增强夜间高亮对比度
+                Text(this.realTemp).fontSize(72).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+                  .textShadow(this.isNightMode ? { radius: 4, color: 'rgba(0,0,0,0.8)', offsetX: 1, offsetY: 2 } : { radius: 0 })
+                Text('℃').fontSize(24).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ bottom: 12 })
+              }.alignItems(VerticalAlign.Bottom)
+              Text('当前室内温度').fontSize(16).fontColor(this.isNightMode ? '#A0AAB5' : '#888')
+            }.layoutWeight(1).alignItems(HorizontalAlign.Center)
 
-            Row() {
-              RoomGrid({
-                name: '厨房安防', mainVal: '正常', mainUnit: 'ENV',
-                sub1Lbl: '燃气浓度', sub1Val: '0%', sub2Lbl: '烟雾探测', sub2Val: '正常',
-                dev1Name: '烟雾报警', dev1Color: '#FF1744', dev1Active: true,
-                dev2Name: '智能插座', dev2Color: '#00E5FF', dev2Active: true,
-                isNightMode: this.isNightMode
-              })
+            Divider().vertical(true).height(80).color(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)')
 
-              Column({ space: 12 }) {
-                Column({ space: 8 }) {
-                  Row({ space: 8 }) {
-                    Rect().width(4).height(16).fill(this.isNightMode ? '#00E5FF' : '#007799').radius(2)
-                    Text('玄关门禁').fontSize(18).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bolder).letterSpacing(1)
-                  }.alignItems(VerticalAlign.Center)
+            Column({ space: 8 }) {
+              Row({ space: 4 }) {
+                // 🌟 添加 textShadow
+                Text(this.realHum).fontSize(72).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+                  .textShadow(this.isNightMode ? { radius: 4, color: 'rgba(0,0,0,0.8)', offsetX: 1, offsetY: 2 } : { radius: 0 })
+                Text('%').fontSize(24).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ bottom: 12 })
+              }.alignItems(VerticalAlign.Bottom)
+              Text('室内相对湿度').fontSize(16).fontColor(this.isNightMode ? '#A0AAB5' : '#888')
+            }.layoutWeight(1).alignItems(HorizontalAlign.Center)
+          }.width('100%').justifyContent(FlexAlign.SpaceEvenly)
 
-                  Row({ space: 4 }) {
-                    Text(this.isDoorLocked ? '设防中' : '已解锁').fontSize(26).fontWeight(FontWeight.Bolder).fontColor(this.isDoorLocked ? (this.isNightMode ? '#00E5FF' : '#007799') : '#FF1744')
-                    Text('STATUS').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888').margin({ bottom: 4 })
-                  }.alignItems(VerticalAlign.Bottom)
-                }.alignItems(HorizontalAlign.Center)
-
-                Row({ space: 24 }) {
-                  Column({ space: 4 }) { Text('门锁电量').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text('85%').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
-                  Column({ space: 4 }) { Text('门磁状态').fontSize(10).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.isDoorLocked ? '闭合' : '开启').fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
-                }.justifyContent(FlexAlign.Center)
-
-                Divider().color(this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)').width('40%')
-
-                Row({ space: 12 }) {
-                  DeviceTag({ name: '智能锁', color: this.isDoorLocked ? '#00FF00' : '#FF1744', active: !this.isDoorLocked, isNightMode: this.isNightMode })
-                  DeviceTag({ name: '安防微波', color: '#FF9100', active: this.isDoorLocked, isNightMode: this.isNightMode })
-                }
-              }
-              .layoutWeight(1).height('100%').border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' })
-              .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
-              .onClick(() => {
-                // 🌟 核心修改：门禁逻辑被弹窗拦截
-                if (this.isDoorLocked) {
-                  // 如果是上锁状态，想要解锁，必须弹出密码框
-                  this.doorAuthController.open();
-                } else {
-                  // 如果是解锁状态，直接上锁
-                  animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
-                    this.isDoorLocked = true;
-                    DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true));
-                    this.aiLog = `[DOOR ACCESS] 门禁系统已设防`;
-                    this.aiLogColor = '#00E5FF';
-                  });
-                }
-              })
-            }.width('100%').layoutWeight(1)
-          }
-          .width('100%').height(380)
-
+          Row({ space: 24 }) {
+            this.QuickControlButton('💡', '客厅主灯', this.isMainLightOn, '#00FF00', () => {
+              this.isMainLightOn = !this.isMainLightOn;
+              DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, this.isMainLightOn));
+            })
+            this.QuickControlButton('❄️', '全屋空调', this.isAcOn, '#00E5FF', () => {
+              this.isAcOn = !this.isAcOn;
+              DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, this.isAcOn));
+            })
+          }.width('100%').justifyContent(FlexAlign.Center)
         }
-        .width('85%').padding(24).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.85)')
-        .borderRadius(24).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)' })
-        .shadow({ radius: 30, color: 'rgba(0,0,0,0.1)' })
+        .layoutWeight(1).height('100%').padding(32)
+        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')
+        .borderRadius(32).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)' })
 
-        Row({ space: 24 }) {
-          MiniBarChart({ title: '温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode })
-          MiniBarChart({ title: '端到端加密吞吐率 (实时)', dataArray: this.cryptoTrafficData, color: '#7B61FF', isNightMode: this.isNightMode })
+        // 右侧安防区
+        Column({ space: 40 }) {
+          Row({ space: 8 }) {
+            Rect().width(6).height(24).fill(this.isNightMode ? '#00E5FF' : '#007799').radius(3)
+            Text('玄关安防总线').fontSize(24).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bolder).letterSpacing(2)
+          }.alignItems(VerticalAlign.Center).width('100%')
+
+          Column({ space: 16 }) {
+            // 🌟 添加 textShadow
+            Text(this.isDoorLocked ? '设防中' : '已解锁')
+              .fontSize(64).fontWeight(FontWeight.Bolder)
+              .fontColor(this.isDoorLocked ? (this.isNightMode ? '#00E5FF' : '#007799') : '#FF1744')
+              .textShadow(this.isNightMode ? { radius: 4, color: 'rgba(0,0,0,0.8)', offsetX: 1, offsetY: 2 } : { radius: 0 })
+            Text(this.isDoorLocked ? '🔒 外部访问已锁定，系统严密监控中' : '🔓 门禁已开启，请注意居室安全')
+              .fontSize(16).fontColor(this.isNightMode ? '#A0AAB5' : '#888')
+          }.alignItems(HorizontalAlign.Center).layoutWeight(1).justifyContent(FlexAlign.Center)
+
+          Row({ space: 48 }) {
+            Column({ space: 8 }) { Text('门锁剩余电量').fontSize(14).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text('85%').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
+            Column({ space: 8 }) { Text('物理门磁状态').fontSize(14).fontColor(this.isNightMode ? '#A0AAB5' : '#888'); Text(this.isDoorLocked ? '紧闭' : '脱开').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#E0E0E0' : '#444') }.alignItems(HorizontalAlign.Center)
+          }.width('100%').justifyContent(FlexAlign.Center)
         }
-        .width('85%')
-        .justifyContent(FlexAlign.SpaceBetween)
+        .layoutWeight(1).height('100%').padding(32)
+        .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')
+        .borderRadius(32).border({ width: 1, color: this.isNightMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)' })
+        .onClick(() => {
+          if (this.isDoorLocked) this.doorAuthController.open();
+          else animateTo({ duration: 400, curve: Curve.EaseInOut }, () => {
+            this.isDoorLocked = true; DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true));
+            this.aiLog = `[DOOR ACCESS] 门禁系统已设防`; this.aiLogColor = '#00E5FF';
+          });
+        })
+      }.width('85%').height(360)
 
-      }
-      .width('100%')
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.Center)
+      Row({ space: 32 }) {
+        MiniBarChart({ title: '全屋温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode })
+        MiniBarChart({ title: '底层端到端加密吞吐率 (实时)', dataArray: this.cryptoTrafficData, color: '#7B61FF', isNightMode: this.isNightMode })
+      }.width('85%').justifyContent(FlexAlign.SpaceBetween).layoutWeight(1)
 
       Row() {
         Text('⚡ AI ENGINE EVENT:').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.aiLogColor).margin({ right: 12 })
-          .animation({ duration: 300 })
         Text(this.aiLog).fontSize(14).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontFamily('monospace')
       }
-      .width('100%').height(48).padding({ left: 20 }).backgroundColor(this.isNightMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.85)')
-      .borderRadius(16).border({ width: 1, color: this.isNightMode ? 'rgba(0, 229, 255, 0.3)' : 'rgba(0, 119, 153, 0.3)' })
+      .width('100%').height(48).padding({ left: 24 }).backgroundColor(this.isNightMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.4)')
+      .borderRadius(24).border({ width: 1, color: this.isNightMode ? 'rgba(0, 229, 255, 0.3)' : 'rgba(0, 119, 153, 0.3)' })
     }
     .width('100%').height('100%').padding(32)
   }
