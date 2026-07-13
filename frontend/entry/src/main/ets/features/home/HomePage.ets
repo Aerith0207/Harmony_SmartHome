@@ -244,14 +244,18 @@ export struct HomePage {
       Row({ space: 32 }) {
         MiniBarChart({ title: '全屋温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode })
 
-        // 🌟 智能管家机器人面板
         Column() {
           Row() {
             Text('智能管家机器人 (AI Agent)').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFFFFF' : '#556677')
             Blank()
             Row({ space: 4 }) {
-              Circle({ width: 6, height: 6 }).fill('#00FF00').shadow({ radius: 4, color: '#00FF00' })
-              Text('ACTIVE').fontSize(12).fontColor('#00FF00').fontWeight(FontWeight.Bold)
+              // 🌟 修复：ACTIVE 状态灯昼夜适配
+              Circle({ width: 6, height: 6 })
+                .fill(this.isNightMode ? '#00FF00' : '#009900')
+                .shadow({ radius: 4, color: this.isNightMode ? '#00FF00' : 'transparent' })
+              Text('ACTIVE').fontSize(12)
+                .fontColor(this.isNightMode ? '#00FF00' : '#009900')
+                .fontWeight(FontWeight.Bold)
             }
           }.width('100%')
 
@@ -270,9 +274,17 @@ export struct HomePage {
               Text('全环境感知中枢已接管，正在默默守护您的居住健康。').fontSize(11).fontColor(this.isNightMode ? '#FFFFFF' : '#666').lineHeight(16).opacity(this.isNightMode ? 0.9 : 1)
 
               Row() {
-                Text('⚡ 满电').fontSize(10).fontColor('#00FF00')
+                // 🌟 修复：满电文字在白天模式下改为深绿色，并加粗提升辨识度
+                Text('⚡ 满电')
+                  .fontSize(10)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(this.isNightMode ? '#00FF00' : '#009900')
                 Blank()
-                Text('🧠 大模型已挂载').fontSize(10).fontColor(this.isNightMode ? '#FFFFFF' : '#888').opacity(this.isNightMode ? 0.8 : 1)
+                Text('🧠 大模型已挂载')
+                  .fontSize(10)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(this.isNightMode ? '#FFFFFF' : '#888')
+                  .opacity(this.isNightMode ? 0.8 : 1)
               }.width('100%').margin({ top: 4 })
             }.layoutWeight(1).alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Center)
           }.width('100%').margin({ top: 12 }) // 控制头像和标题的紧凑距离
