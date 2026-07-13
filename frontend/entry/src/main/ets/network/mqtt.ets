@@ -24,7 +24,7 @@ export class MqttBusService {
 
     try {
       this.client = MqttAsync.createMqtt({
-        url: 'ssl://broker.emqx.io:8883',
+        url: 'ssl://broker-cn.emqx.io:8883',
         clientId: `hmos_sh_node_${Date.now()}`,
         persistenceType: 1
       });
