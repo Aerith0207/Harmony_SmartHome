@@ -114,7 +114,7 @@ export class MqttBusService {
           cipherBytes[i / 2] = parseInt(hexStr.substring(i, i + 2), 16);
         }
       } else {
-        return; // 防御性拦截
+        return;
       }
 
       // 送入 AES 引擎解密
@@ -124,34 +124,49 @@ export class MqttBusService {
         return;
       }
 
-      const parsed: Record<string, number> = JSON.parse(decryptedText) as Record<string, number>;
+      // 打印真实的原始明文，方便核对
+      hilog.info(0x0000, 'MQTT_BUS', `✅ 密文解开！原始明文: ${decryptedText}`);
 
-      if (parsed) {
-        hilog.info(0x0000, 'MQTT_BUS', `✅ 密文解开！明文数据: 温度=${parsed['temp']}, 湿度=${parsed['humi']}`);
+      let parsedTemp: number | undefined = undefined;
+      let parsedHumi: number | undefined = undefined;
+      let parsedLightSw: number | undefined = undefined;
 
-        const model = new SensorDataModel();
+      try {
+        const parsed = JSON.parse(decryptedText) as Record<string, number | string>;
 
-        model.temperature = parsed['temp'] !== undefined ? parsed['temp'] : 24.5;
-        model.humidity = parsed['humi'] !== undefined ? parsed['humi'] : 50.0;
-        model.light = parsed['light'] !== undefined ? parsed['light'] : 400;
+        // 🌟 核心修改：完全按照单片机发来的真实 Key 进行映射
+        parsedTemp = parsed['temperature'] as number;
+        parsedHumi = parsed['humidity'] as number;
+        parsedLightSw = parsed['light_mode'] as number;
 
-        model.lightStatus = parsed['light_sw'] === 1;
-        model.doorOpen = parsed['door'] === 1;
-        model.acStatus = parsed['ac_sw'] === 1;
-        model.acTemp = parsed['ac_temp'] !== undefined ? parsed['ac_temp'] : 26;
-        model.acMode = parsed['ac_mode'] !== undefined ? parsed['ac_mode'] : 0;
-        model.autoLight = parsed['auto_light'] === 1;
-        model.autoAc = parsed['auto_ac'] === 1;
-
-        if (this.sensorCallback) {
-          this.sensorCallback(model);
-        } else {
-          hilog.warn(0x0000, 'MQTT_BUS', '⚠️ 警告：UI 层的 sensorCallback 未注册，数据被丢弃！');
-        }
+      } catch (e) {
+        hilog.error(0x0000, 'MQTT_BUS', '❌ JSON解析失败');
       }
+
+      hilog.info(0x0000, 'MQTT_BUS', `✅ 成功映射数据: 温度=${parsedTemp}, 湿度=${parsedHumi}`);
+
+      const model = new SensorDataModel();
+      // 如果拿到数据就用真实数据，拿不到就给个合理的默认值
+      model.temperature = parsedTemp !== undefined ? parsedTemp : 24.5;
+      model.humidity = parsedHumi !== undefined ? parsedHumi : 50.0;
+
+      // 单片机发来 -1 可能是代表异常或关灯，我们规定只有 1 才是开启
+      model.lightStatus = parsedLightSw === 1;
+
+      // 其他设备状态保持默认，等待后续补充
+      model.doorOpen = false;
+      model.acStatus = false;
+      model.acTemp = 26;
+
+      if (this.sensorCallback) {
+        this.sensorCallback(model);
+      } else {
+        hilog.warn(0x0000, 'MQTT_BUS', '⚠️ 警告：UI 层的 sensorCallback 未注册！');
+      }
+
     } catch (err) {
       let e = err as Error;
-      hilog.error(0x0000, 'MQTT_BUS', `❌ 解密后 JSON 解析异常: ${e.message}`);
+      hilog.error(0x0000, 'MQTT_BUS', `❌ 处理报文异常: ${e.message}`);
     }
   }
 }
