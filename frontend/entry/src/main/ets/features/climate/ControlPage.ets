@@ -197,8 +197,19 @@ export struct ControlPage {
               Text('HVAC Climate Control').fontSize(12).fontColor(this.isNightMode ? '#00E5FF' : '#007799').letterSpacing(2)
               Blank()
               Select([{ value: '默认通用' }, { value: '海尔' }, { value: '格力' }, { value: '美的' }])
-                .selected(this.currentAcBrand).value('品牌:默认').font({ size: 12, weight: 500 }).fontColor(this.isNightMode ? '#00E5FF' : '#007799').selectedOptionFont({ size: 12, weight: 400 }).optionFont({ size: 12, weight: 400 })
-                .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA').borderRadius(8).onSelect((index: number) => { this.currentAcBrand = index; DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, 'brand' as DeviceAction, index)); })
+                .selected(this.currentAcBrand)
+                // 🌟 修复点：动态映射选中的品牌名称
+                .value(`品牌:${['默认通用', '海尔', '格力', '美的'][this.currentAcBrand]}`)
+                .font({ size: 12, weight: 500 })
+                .fontColor(this.isNightMode ? '#00E5FF' : '#007799')
+                .selectedOptionFont({ size: 12, weight: 400 })
+                .optionFont({ size: 12, weight: 400 })
+                .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA')
+                .borderRadius(8)
+                .onSelect((index: number) => {
+                  this.currentAcBrand = index;
+                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, 'brand' as DeviceAction, index));
+                })
             }.width('100%').margin({ bottom: 20 })
 
             Stack() {
