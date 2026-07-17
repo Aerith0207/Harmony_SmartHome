@@ -1,6 +1,7 @@
 // frontend/entry/src/main/ets/pages/Login.ets
 import router from '@ohos.router';
 import { MqttBusService } from '../network/mqtt'; // 🌟 引入通信服务
+import hilog from '@ohos.hilog'; // 🌟 新增：引入日志模块
 
 @Entry
 @Component
@@ -8,6 +9,13 @@ struct Login {
   @State isInitializing: boolean = true;
   @State initProgress: number = 0;
   @State terminalLog: string = 'SYSTEM: Booting kernel components...';
+
+  // 👇👇👇 新增：插入首屏渲染探针 👇👇👇
+  onPageShow() {
+    let renderTime = Date.now();
+    hilog.info(0x0000, 'PERF_TEST', `✅ [首屏渲染终点] 登录页 UI 呈现完毕！当前时间戳: ${renderTime}`);
+  }
+  // 👆👆👆 探针结束 👆👆👆
 
   aboutToAppear() {
     let intervalId = setInterval(() => {
