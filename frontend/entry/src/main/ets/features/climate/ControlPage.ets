@@ -23,10 +23,10 @@ struct SubControlBtn {
     return `${r}, ${g}, ${b}`;
   }
   build() {
-    Text(this.label).fontSize(10).fontWeight(FontWeight.Bold).fontColor(this.isActive ? this.activeColor : (this.isNightMode ? '#B0BEC5' : '#666'))
-      .padding({ top: 6, bottom: 6, left: 12, right: 12 })
+    Text(this.label).fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.isActive ? this.activeColor : (this.isNightMode ? '#B0BEC5' : '#666'))
+      .padding({ top: 10, bottom: 10, left: 14, right: 14 })
       .backgroundColor(this.isActive ? `rgba(${this.hexToRgb(this.activeColor)}, 0.15)` : (this.isNightMode ? '#2A2E35' : '#F5F7FA'))
-      .borderRadius(16).border({ width: 1, color: this.isActive ? this.activeColor : (this.isNightMode ? '#3A3F48' : '#E0E4E8') })
+      .borderRadius(20).border({ width: 1, color: this.isActive ? this.activeColor : (this.isNightMode ? '#3A3F48' : '#E0E4E8') })
       .animation({ duration: 300, curve: Curve.EaseInOut }).onClick(() => this.onClickAction())
   }
 }
@@ -52,6 +52,7 @@ export struct AiConfirmDialog {
 export struct DoorAuthDialog {
   controller: CustomDialogController;
   @State inputPwd: string = '';
+  @StorageLink('global_doorPwd') globalDoorPwd: string = '123456';
   onAuthSuccess: () => void = () => {};
   isNightMode: boolean = false;
 
@@ -65,12 +66,18 @@ export struct DoorAuthDialog {
         .height(48).borderRadius(12)
         .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA')
         .fontColor(this.isNightMode ? '#FFF' : '#333')
-        // 🌟 修复点：动态指定占位符的颜色，确保在黑夜模式下清晰可见
         .placeholderColor(this.isNightMode ? '#8899AA' : '#888')
 
       Row({ space: 16 }) {
         Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? '#3A3F48' : '#E0E4E8').fontColor(this.isNightMode ? '#FFF' : '#333').onClick(() => this.controller.close())
-        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF').onClick(() => { if (this.inputPwd === '123456') { this.onAuthSuccess(); this.controller.close(); } else { promptAction.showToast({ message: '❌ 密码错误，拒绝访问' }); } })
+        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF').onClick(() => {
+          if (this.inputPwd === this.globalDoorPwd) {
+            this.onAuthSuccess();
+            this.controller.close();
+          } else {
+            promptAction.showToast({ message: '❌ 密码错误，拒绝访问' });
+          }
+        })
       }.width('100%')
     }
     .padding(24).backgroundColor(this.isNightMode ? '#1E222B' : '#FFFFFF').borderRadius(24)
@@ -89,7 +96,6 @@ struct SceneCard {
       }.alignItems(HorizontalAlign.Start).layoutWeight(1)
       Toggle({ type: ToggleType.Switch, isOn: this.active }).selectedColor(this.glowColor).hitTestBehavior(HitTestMode.Block)
     }
-    // 🌟 不透明的内部卡片底色
     .layoutWeight(1).height(88).padding(20)
     .backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA')
     .borderRadius(20).border({ width: 1, color: this.active ? this.glowColor : (this.isNightMode ? '#3A3F48' : '#E0E4E8') })
@@ -130,7 +136,7 @@ export struct ControlPage {
   @StorageLink('global_realHum') currentHum: string = '45.0';
   @StorageLink('global_isAcOn') isAcOn: boolean = false;
   @StorageLink('global_acMode') acMode: number = 0;
-  @State fanSpeed: string = 'AUTO';
+  @StorageLink('global_acFan') acFan: number = 0;
   @State activeScene: string = '回家模式';
   @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
   @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
@@ -139,22 +145,63 @@ export struct ControlPage {
   @State currentAiStrategy: AiCommand[] = [];
   @State isAiLoading: boolean = false;
   @State userInputIntent: string = '';
-  @State currentAcBrand: number = 0;
+  @StorageLink('global_acBrand') currentAcBrand: number = 0;
   @State isListening: boolean = false;
   @State timerMessage: string = '🕒 设定定时关机';
   @State acTimerId: number = -1;
+
+  syncAcState() {
+    let hwBrand = 0;
+    if (this.currentAcBrand === 1) hwBrand = 2;
+    else if (this.currentAcBrand === 2) hwBrand = 1;
+    else if (this.currentAcBrand === 3) hwBrand = 0;
+
+    let hwMode = 1;
+    if (this.acMode === 0) hwMode = 1;
+    else if (this.acMode === 1) hwMode = 4;
+    else if (this.acMode === 2) hwMode = 2;
+
+    let payload: Record<string, string | number> = {};
+    payload['cmd'] = "ac_set";
+    payload['brand'] = hwBrand;
+    payload['power'] = this.isAcOn ? 1 : 0;
+    payload['mode'] = this.acMode;
+    payload['temp'] = this.targetTemp;
+    payload['fan'] = this.acFan;
+
+    hilog.info(0x0000, 'AC_CTRL', `📤 [准备下发] 组装完成的空调全量状态: ${JSON.stringify(payload)}`);
+    MqttBusService.getInstance().publishCommand(payload);
+  }
 
   dialogController: CustomDialogController = new CustomDialogController({
     builder: AiConfirmDialog({
       strategyList: this.currentAiStrategy,
       onConfirm: () => {
+        let needAcSync = false;
         this.currentAiStrategy.forEach((strategy: AiCommand) => {
-          let cmd = new DeviceCommand(strategy.device as DeviceType, strategy.action as DeviceAction, strategy.value);
-          DeviceManager.getInstance().sendCommand(cmd);
-          let act = strategy.action.toLowerCase(); let val = strategy.value; let isTurnOn = (val === true || val === 'true' || val === 1 || val === 'on');
-          if(strategy.device === 'ac') { if(act === 'power' || act === 'switch') this.isAcOn = isTurnOn; if(act === 'temperature' || act === 'temp') this.targetTemp = Number(val); }
-          if(strategy.device === 'light') { if(act === 'power' || act === 'switch') this.isMainLightOn = isTurnOn; }
+          let act = strategy.action.toLowerCase();
+          let val = strategy.value;
+          let isTurnOn = (val === true || val === 'true' || val === 1 || val === 'on');
+
+          if(strategy.device === 'ac') {
+            needAcSync = true;
+            if(act === 'power' || act === 'switch') this.isAcOn = isTurnOn;
+            if(act === 'temperature' || act === 'temp') this.targetTemp = Number(val);
+            // 🌟 新增：拦截 AI 的模式切换指令
+            if(act === 'mode') this.acMode = Number(val);
+            // 🌟 新增：拦截 AI 的风速切换指令
+            if(act === 'fan') this.acFan = Number(val);
+          }
+          if(strategy.device === 'light') {
+            if(act === 'power' || act === 'switch') this.isMainLightOn = isTurnOn;
+            DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, isTurnOn));
+          }
         });
+
+        if (needAcSync) {
+          // AI 策略解析赋值完毕，触发全量状态同步！
+          this.syncAcState();
+        }
       }
     }), alignment: DialogAlignment.Center, autoCancel: false
   });
@@ -173,7 +220,8 @@ export struct ControlPage {
 
   async triggerAiAssistant(intent: string) {
     this.isAiLoading = true;
-    let result = await AiDecisionEngine.requestStrategy(intent, parseFloat(this.currentTemp), parseFloat(this.currentHum));
+    // 🌟 传入 this.targetTemp 替代之前的 currentHum
+    let result = await AiDecisionEngine.requestStrategy(intent, parseFloat(this.currentTemp), this.targetTemp);
     this.isAiLoading = false;
     if (result.type === 'CONTROL' && result.commands.length > 0) {
       this.currentAiStrategy = result.commands; this.dialogController.open();
@@ -198,7 +246,6 @@ export struct ControlPage {
               Blank()
               Select([{ value: '默认通用' }, { value: '海尔' }, { value: '格力' }, { value: '美的' }])
                 .selected(this.currentAcBrand)
-                // 🌟 修复点：动态映射选中的品牌名称
                 .value(`品牌:${['默认通用', '海尔', '格力', '美的'][this.currentAcBrand]}`)
                 .font({ size: 12, weight: 500 })
                 .fontColor(this.isNightMode ? '#00E5FF' : '#007799')
@@ -208,7 +255,7 @@ export struct ControlPage {
                 .borderRadius(8)
                 .onSelect((index: number) => {
                   this.currentAcBrand = index;
-                  DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, 'brand' as DeviceAction, index));
+                  this.syncAcState();
                 })
             }.width('100%').margin({ bottom: 20 })
 
@@ -219,7 +266,11 @@ export struct ControlPage {
               Column() {
                 Text('TARGET').fontSize(10).fontColor(this.isNightMode ? '#8899AA' : '#888')
                 Text(`${this.targetTemp}℃`).fontSize(48).fontWeight(FontWeight.Bolder).fontColor(this.isAcOn ? (this.isNightMode ? '#00E5FF' : '#007799') : (this.isNightMode ? '#A0AAB5' : '#888')).margin({ top: 4, bottom: 4 }).animation({ duration: 400, curve: Curve.EaseInOut })
-                Text(this.isAcOn ? `MODE:${this.acMode === 0 ? 'COOL' : this.acMode === 1 ? 'HEAT' : 'DRY'}` : 'OFFLINE').fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744').animation({ duration: 400 })
+                // 🌟 将圆环中央的状态展示中文化
+                Text(this.isAcOn ?
+                  `模式:${this.acMode===0?'自动':this.acMode===1?'制冷':this.acMode===2?'除湿':this.acMode===3?'送风':'制热'} | 风速:${this.acFan===0?'自动':this.acFan===1?'低风':this.acFan===2?'中风':'高风'}`
+                  : '离线')
+                  .fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744').animation({ duration: 400 })
               }
             }.margin({ bottom: 20 })
 
@@ -229,24 +280,38 @@ export struct ControlPage {
             }.margin({ bottom: 24 })
 
             Row({ space: 16 }) {
-              Button('-').width(50).height(50).fontSize(24).backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(25).onClick(() => { if(this.isAcOn) { animateTo({ duration: 300 }, () => { this.targetTemp -= 1; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.TEMPERATURE, this.targetTemp)); } })
-              Button(this.isAcOn ? '关闭' : '开启').width(110).height(50).fontSize(16).fontWeight(FontWeight.Bold).backgroundColor(this.isAcOn ? '#FF1744' : '#1976D2').borderRadius(25).animation({ duration: 600 }).onClick(() => { animateTo({ duration: 600 }, () => { this.isAcOn = !this.isAcOn; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, this.isAcOn)); })
-              Button('+').width(50).height(50).fontSize(24).backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(25).onClick(() => { if(this.isAcOn) { animateTo({ duration: 300 }, () => { this.targetTemp += 1; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.TEMPERATURE, this.targetTemp)); } })
+              Button('-').width(50).height(50).fontSize(24).backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(25).onClick(() => { if(this.isAcOn && this.targetTemp > 16) { animateTo({ duration: 300 }, () => { this.targetTemp -= 1; }); this.syncAcState(); } })
+              Button(this.isAcOn ? '关闭' : '开启').width(110).height(50).fontSize(16).fontWeight(FontWeight.Bold).backgroundColor(this.isAcOn ? '#FF1744' : '#1976D2').borderRadius(25).animation({ duration: 600 }).onClick(() => { animateTo({ duration: 600 }, () => { this.isAcOn = !this.isAcOn; }); this.syncAcState(); })
+              Button('+').width(50).height(50).fontSize(24).backgroundColor(this.isNightMode ? '#2A2E35' : '#F5F7FA').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(25).onClick(() => { if(this.isAcOn && this.targetTemp < 30) { animateTo({ duration: 300 }, () => { this.targetTemp += 1; }); this.syncAcState(); } })
             }.margin({ bottom: 20 })
 
-            Row({ space: 12 }) {
-              SubControlBtn({ label: 'COOL', isActive: this.acMode === 0 && this.isAcOn, activeColor: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 0); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 0)); } }})
-              SubControlBtn({ label: 'HEAT', isActive: this.acMode === 1 && this.isAcOn, activeColor: '#FF9100', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 1); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 1)); } }})
-              SubControlBtn({ label: 'DRY', isActive: this.acMode === 2 && this.isAcOn, activeColor: '#7B61FF', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 2); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.MODE, 2)); } }})
-            }.width('100%').justifyContent(FlexAlign.Center)
+            // 🌟 模式控制行 (全中文标签)
+            Row() { Text('模式').fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.isNightMode ? '#8899AA' : '#888').width(40)
+              Row({ space: 4 }) {
+                SubControlBtn({ label: '自动', isActive: this.acMode === 0 && this.isAcOn, activeColor: '#00E5FF', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 0); this.syncAcState(); } }})
+                SubControlBtn({ label: '制冷', isActive: this.acMode === 1 && this.isAcOn, activeColor: '#1976D2', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 1); this.syncAcState(); } }})
+                SubControlBtn({ label: '除湿', isActive: this.acMode === 2 && this.isAcOn, activeColor: '#7B61FF', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 2); this.syncAcState(); } }})
+                SubControlBtn({ label: '送风', isActive: this.acMode === 3 && this.isAcOn, activeColor: '#00C853', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 3); this.syncAcState(); } }})
+                SubControlBtn({ label: '制热', isActive: this.acMode === 4 && this.isAcOn, activeColor: '#FF9100', isNightMode: this.isNightMode, onClickAction: () => { if(this.isAcOn) { animateTo({duration:300}, () => this.acMode = 4); this.syncAcState(); } }})
+              }.layoutWeight(1).justifyContent(FlexAlign.SpaceEvenly)
+            }.width('100%').margin({ bottom: 16 })
 
-            Button(this.timerMessage).width('80%').height(40).margin({top: 20}).backgroundColor(this.isNightMode ? 'rgba(0, 229, 255, 0.1)' : 'rgba(0, 119, 153, 0.1)').fontColor(this.isNightMode ? '#00E5FF' : '#007799').borderRadius(20)
-              .onClick(() => {
-                if (this.acTimerId !== -1) { clearTimeout(this.acTimerId); this.acTimerId = -1; this.timerMessage = '🕒 设定定时关机'; return; }
-                TimePickerDialog.show({ useMilitaryTime: true, onAccept: (value: TimePickerResult) => { let delayMs = 3600000; this.acTimerId = setTimeout(() => { this.isAcOn = false; this.timerMessage = '🕒 设定定时关机'; this.acTimerId = -1; DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, false)); }, delayMs); } })
-              })
+            // 🌟 风速控制行 (极致简约的箭头与中文风速)
+            Row() { Text('风速').fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.isNightMode ? '#8899AA' : '#888').width(40)
+              Row({ space: 20 }) {
+                Button('<').width(40).height(40).fontSize(16).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(20)
+                  .onClick(() => { if(this.isAcOn) { animateTo({duration:300}, () => { this.acFan = (this.acFan - 1 + 4) % 4; }); this.syncAcState(); } })
+
+                Text(this.acFan === 0 ? '自动' : this.acFan === 1 ? '低风' : this.acFan === 2 ? '中风' : '高风')
+                  .fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.isAcOn ? (this.isNightMode ? '#00E5FF' : '#007799') : '#888')
+                  .width(60).textAlign(TextAlign.Center).animation({duration: 300})
+
+                Button('>').width(40).height(40).fontSize(16).backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)').fontColor(this.isNightMode ? '#FFF' : '#333').borderRadius(20)
+                  .onClick(() => { if(this.isAcOn) { animateTo({duration:300}, () => { this.acFan = (this.acFan + 1) % 4; }); this.syncAcState(); } })
+              }.layoutWeight(1).justifyContent(FlexAlign.Center)
+            }.width('100%')
+
           }
-          // 🌟 核心：使用全不透明深灰底板
           .layoutWeight(45).height('100%').padding(24).backgroundColor(this.isNightMode ? '#1E222B' : '#FFFFFF')
           .borderRadius(24).border({ width: 1, color: this.isNightMode ? '#2A2E35' : '#E0E4E8' })
 
@@ -263,8 +328,8 @@ export struct ControlPage {
               }.width('100%')
 
               Row({ space: 12 }) {
-                SceneCard({ title: '回家模式', desc: '自动感光与温控', glowColor: this.isNightMode ? '#00E5FF' : '#007799', active: this.activeScene === '回家模式', isNightMode: this.isNightMode, onClickAction: () => { animateTo({ duration: 300 }, () => { this.activeScene = '回家模式'; this.isMainLightOn = true; this.isAcOn = true; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, true)); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.AC, DeviceAction.POWER, true)); }})
-                SceneCard({ title: '离家模式', desc: '断电/开启安防', glowColor: '#FF1744', active: this.activeScene === '离家模式', isNightMode: this.isNightMode, onClickAction: () => { animateTo({ duration: 300 }, () => { this.activeScene = '离家模式'; this.isMainLightOn = false; this.isAcOn = false; this.isDoorLocked = true; this.isAutoAcOn = false; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, false)); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true)); }})
+                SceneCard({ title: '回家模式', desc: '自动感光与温控', glowColor: this.isNightMode ? '#00E5FF' : '#007799', active: this.activeScene === '回家模式', isNightMode: this.isNightMode, onClickAction: () => { animateTo({ duration: 300 }, () => { this.activeScene = '回家模式'; this.isMainLightOn = true; this.isAcOn = true; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, true)); this.syncAcState(); }})
+                SceneCard({ title: '离家模式', desc: '断电/开启安防', glowColor: '#FF1744', active: this.activeScene === '离家模式', isNightMode: this.isNightMode, onClickAction: () => { animateTo({ duration: 300 }, () => { this.activeScene = '离家模式'; this.isMainLightOn = false; this.isAcOn = false; this.isDoorLocked = true; this.isAutoAcOn = false; }); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.LIGHT, DeviceAction.POWER, false)); DeviceManager.getInstance().sendCommand(new DeviceCommand(DeviceType.DOOR, DeviceAction.LOCK, true)); this.syncAcState(); }})
               }.width('100%').margin({top: 10})
             }
 
@@ -279,10 +344,28 @@ export struct ControlPage {
               }.width('100%')
             }
 
-            Button('⚙️触发本地AES解密回环测试').width('100%').height(45).margin({ top: 20 }).backgroundColor('#FF9100')
-              .onClick(async () => { let mockData: Record<string, number> = { "temp": 26, "humi": 50, "light_sw": 1 }; let cipherBytes = await CryptoUtil.encrypt(JSON.stringify(mockData)); let hexString = ""; for (let i = 0; i < cipherBytes.length; i++) { let hex = cipherBytes[i].toString(16).toUpperCase(); hexString += (hex.length === 1 ? "0" + hex : hex); } MqttBusService.getInstance().client?.publish({ topic: 'smart_home/status', payload: hexString, qos: 0 }); })
+            Button('⚙️ 模拟硬件JSON数据流转测试').width('100%').height(45).margin({ top: 20 }).backgroundColor('#7B61FF')
+              .onClick(async () => {
+                try {
+                  let payload: Record<string, number> = {};
+                  payload['temperature'] = 26.5;
+                  payload['humidity'] = 55.0;
+                  payload['light_mode'] = 1;
+
+                  let mockJsonString = JSON.stringify(payload);
+                  let cipherBytes = await CryptoUtil.encrypt(mockJsonString);
+                  let decryptedText = await CryptoUtil.decrypt(cipherBytes);
+
+                  let parsedData = JSON.parse(decryptedText) as Record<string, number>;
+                  let temp = parsedData['temperature'];
+                  let humi = parsedData['humidity'];
+                  let light = parsedData['light_mode'] === 1 ? '已开启' : '已关闭';
+                  promptAction.showToast({ message: `✅ JSON流转成功！\n温度:${temp}℃ 湿度:${humi}%\n客厅主灯:${light}`, duration: 3500 });
+                } catch (e) {
+                  promptAction.showToast({ message: '❌ JSON解析或解密失败，请检查数据格式！' });
+                }
+              })
           }
-          // 🌟 核心：使用全不透明深灰底板
           .layoutWeight(55).height('100%').padding(24).backgroundColor(this.isNightMode ? '#1E222B' : '#FFFFFF')
           .borderRadius(24).border({ width: 1, color: this.isNightMode ? '#2A2E35' : '#E0E4E8' })
 

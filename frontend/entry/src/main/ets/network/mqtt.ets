@@ -4,6 +4,7 @@ import { SensorDataModel } from '../models/DeviceModels';
 import hilog from '@ohos.hilog';
 import { CryptoUtil } from '../core/utils/CryptoUtil';
 
+
 export class MqttBusService {
   private static instance: MqttBusService | null = null;
   public client: MqttClient | null = null;
@@ -58,6 +59,9 @@ export class MqttBusService {
         if (msg && msg.topic === 'smart_home/status') {
           // 自动推断二进制流类型并传入解密器
           this.handleIncomingData(msg.payload);
+        } else if (msg && msg.topic === 'smart_home/control') {
+          // 🌟 新增：拦截公网回传的控制密文，进行自解密测试
+          this.verifyLoopback(msg.payload);
         }
       });
     } catch (e) {
@@ -70,6 +74,10 @@ export class MqttBusService {
     if (!this.client) return;
     const subOpts: MqttSubscribeOptions = { topic: 'smart_home/status', qos: 1 };
     this.client.subscribe(subOpts).catch(() => {});
+
+    // 🌟 新增：订阅自己下发的控制主题，实现公网真实漫游回环
+    const subOptsControl: MqttSubscribeOptions = { topic: 'smart_home/control', qos: 1 };
+    this.client.subscribe(subOptsControl).catch(() => {});
   }
 
   public registerSensorListener(callback: (data: SensorDataModel) => void): void {
@@ -93,7 +101,7 @@ export class MqttBusService {
 
       const pubOpts: MqttPublishOptions = {
         topic: 'smart_home/control',
-        payload: hexString, // 堂堂正正发送标准的纯净字符串
+        payload: hexString, //发送标准的纯净字符串
         qos: 1
       };
       this.client?.publish(pubOpts).catch((err: Error) => {});
@@ -134,7 +142,7 @@ export class MqttBusService {
       try {
         const parsed = JSON.parse(decryptedText) as Record<string, number | string>;
 
-        // 🌟 核心修改：完全按照单片机发来的真实 Key 进行映射
+        // 完全按照单片机发来的真实 Key 进行映射
         parsedTemp = parsed['temperature'] as number;
         parsedHumi = parsed['humidity'] as number;
         parsedLightSw = parsed['light_mode'] as number;
@@ -167,6 +175,30 @@ export class MqttBusService {
     } catch (err) {
       let e = err as Error;
       hilog.error(0x0000, 'MQTT_BUS', `❌ 处理报文异常: ${e.message}`);
+    }
+  }
+
+  // 🌟 修改：符合底层网络服务规范的公网真实回环验证逻辑
+  private async verifyLoopback(rawPayload: ArrayBuffer | string): Promise<void> {
+    try {
+      if (typeof rawPayload !== 'string') return;
+
+      let hexStr = rawPayload.trim();
+      let cipherBytes = new Uint8Array(hexStr.length / 2);
+      for (let i = 0; i < hexStr.length; i += 2) {
+        cipherBytes[i / 2] = parseInt(hexStr.substring(i, i + 2), 16);
+      }
+
+      let decryptedText = await CryptoUtil.decrypt(cipherBytes);
+
+      if (decryptedText) {
+        // 仅在底层 Log 控制台输出，保持架构纯洁性
+        hilog.info(0x0000, 'MQTT_BUS', `🎉 公网回环解密成功！明文: ${decryptedText}`);
+      } else {
+        hilog.error(0x0000, 'MQTT_BUS', `❌ 公网回环解密失败，密文已被污染！`);
+      }
+    } catch (err) {
+      hilog.error(0x0000, 'MQTT_BUS', `回环测试异常: ${JSON.stringify(err)}`);
     }
   }
 }

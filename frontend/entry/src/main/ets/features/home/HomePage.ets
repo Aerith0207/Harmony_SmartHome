@@ -7,10 +7,13 @@ import { DeviceManager } from '../../core/DeviceManager';
 import { DeviceType, DeviceAction } from '../../core/adapter/DeviceConstants';
 import { DeviceCommand } from '../../core/adapter/CommandModel';
 
+// ================= 1. 升级：门禁密码弹窗引入全局验证 =================
 @CustomDialog
 export struct DoorAuthDialog {
   controller: CustomDialogController;
   @State inputPwd: string = '';
+  // 🌟 引入全局门禁密码
+  @StorageLink('global_doorPwd') globalDoorPwd: string = '123456';
   onAuthSuccess: () => void = () => {};
   isNightMode: boolean = false;
 
@@ -28,7 +31,15 @@ export struct DoorAuthDialog {
 
       Row({ space: 16 }) {
         Button('取消').layoutWeight(1).backgroundColor(this.isNightMode ? '#3A3F48' : '#E0E4E8').fontColor(this.isNightMode ? '#FFF' : '#333').onClick(() => this.controller.close())
-        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF').onClick(() => { if (this.inputPwd === '123456') { this.onAuthSuccess(); this.controller.close(); } else { promptAction.showToast({ message: '❌ 密码错误，拒绝访问' }); } })
+        // 🌟 修改：进行真实的全局密码比对
+        Button('验证并开锁').layoutWeight(1).backgroundColor('#FF1744').fontColor('#FFF').onClick(() => {
+          if (this.inputPwd === this.globalDoorPwd) {
+            this.onAuthSuccess();
+            this.controller.close();
+          } else {
+            promptAction.showToast({ message: '❌ 密码错误，拒绝访问' });
+          }
+        })
       }.width('100%')
     }
     .padding(24).backgroundColor(this.isNightMode ? '#1E222B' : '#FFFFFF').borderRadius(24)
@@ -75,6 +86,51 @@ struct MiniBarChart {
   }
 }
 
+// ================= 2. 新增：鸿蒙边缘节点状态监视器 (专家特供) =================
+@Component
+struct GatewayStatusCard {
+  @Prop isNightMode: boolean;
+  @Prop cpuLoad: number;
+  @State sysUptime: string = '00:00:00';
+
+  aboutToAppear() {
+    let seconds = 0;
+    setInterval(() => {
+      seconds++;
+      let h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+      let m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+      let s = (seconds % 60).toString().padStart(2, '0');
+      this.sysUptime = `${h}:${m}:${s}`;
+    }, 1000);
+  }
+
+  build() {
+    Row({ space: 16 }) {
+      Column({ space: 4 }) {
+        Text('OpenHarmony Edge Node').fontSize(10).fontColor(this.isNightMode ? '#00E5FF' : '#007799').fontWeight(FontWeight.Bold)
+        Text('Hi3861 网关状态').fontSize(12).fontColor(this.isNightMode ? '#FFF' : '#333').fontWeight(FontWeight.Bold)
+      }.alignItems(HorizontalAlign.Start)
+
+      Divider().vertical(true).height(24).color(this.isNightMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)')
+
+      this.StatusItem('CPU', `${this.cpuLoad}%`, this.cpuLoad > 80 ? '#FF1744' : '#00FF00')
+      this.StatusItem('Memory', '42.6 MB', this.isNightMode ? '#FFF' : '#333')
+      this.StatusItem('Uptime', this.sysUptime, this.isNightMode ? '#A0AAB5' : '#888')
+    }
+    .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)')
+    .borderRadius(16)
+    .border({ width: 1, color: this.isNightMode ? 'rgba(0, 229, 255, 0.2)' : 'rgba(0, 119, 153, 0.1)' })
+  }
+
+  @Builder StatusItem(label: string, val: string, valColor: string) {
+    Column() {
+      Text(label).fontSize(9).fontColor(this.isNightMode ? '#8899AA' : '#666')
+      Text(val).fontSize(11).fontWeight(FontWeight.Bold).fontColor(valColor).margin({ top: 2 })
+    }.alignItems(HorizontalAlign.Center)
+  }
+}
+
 @Component
 export struct HomePage {
   @Prop isNightMode: boolean;
@@ -90,6 +146,8 @@ export struct HomePage {
   @StorageLink('global_isDoorLocked') isDoorLocked: boolean = true;
   @StorageLink('global_isMainLightOn') isMainLightOn: boolean = false;
   @StorageLink('global_isAcOn') isAcOn: boolean = false;
+  // 获取全局用户名用于问候
+  @StorageLink('global_username') username: string = '未登录';
 
   @StorageLink('global_tempTrend') tempTrendData: number[] = [45, 50, 48, 55, 60, 58, 65, 60, 70, 68, 75, 70, 65, 60, 55, 58, 62, 65, 60, 55];
 
@@ -147,14 +205,17 @@ export struct HomePage {
     Column({ space: 20 }) {
       Row() {
         Column() {
-          Text(`${this.greeting}，主人。欢迎回家！`).fontSize(32).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
-          Text('舒适度：极佳 | 空气质量：优 | 网络：加密稳定').fontSize(14).fontColor(this.isNightMode ? '#00E5FF' : '#007799').margin({ top: 8 })
+          // 🌟 动态问候语：结合全局登录名
+          Text(`${this.greeting}，${this.username === '未登录' ? '访客' : this.username}。`).fontSize(32).fontWeight(FontWeight.Bolder).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A')
+
+          // 🌟 插入网关实时监控面板
+          GatewayStatusCard({ isNightMode: this.isNightMode, cpuLoad: this.cpuLoad }).margin({ top: 12 })
+
         }.alignItems(HorizontalAlign.Start)
         Blank()
         Row({ space: 24 }) {
           this.StatusIndicator('GATEWAY', 'ONLINE 🟢', '#00FF00')
           this.StatusIndicator('SECURITY', 'AES-256 🔒', '#7B61FF')
-          this.StatusIndicator('CPU LOAD', `${this.cpuLoad}% ⚡`, '#FF9100')
           Text(this.currentTime).fontFamily('monospace').fontSize(36).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bold)
         }
       }.width('100%').padding({ bottom: 20 }).border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })
@@ -237,10 +298,9 @@ export struct HomePage {
         })
       }.width('85%').height(360)
 
-      // 🌟 核心：用 Blank 彻底撑开中间留白，把底部卡片压下去
       Blank()
 
-      // ================= 3. 底部次级卡片区 (紧凑高度 140) =================
+      // ================= 3. 底部次级卡片区 =================
       Row({ space: 32 }) {
         MiniBarChart({ title: '全屋温湿度波动指数 (24H)', dataArray: this.tempTrendData, color: this.isNightMode ? '#00E5FF' : '#007799', isNightMode: this.isNightMode })
 
@@ -249,7 +309,6 @@ export struct HomePage {
             Text('智能管家机器人 (AI Agent)').fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.isNightMode ? '#FFFFFF' : '#556677')
             Blank()
             Row({ space: 4 }) {
-              // 🌟 修复：ACTIVE 状态灯昼夜适配
               Circle({ width: 6, height: 6 })
                 .fill(this.isNightMode ? '#00FF00' : '#009900')
                 .shadow({ radius: 4, color: this.isNightMode ? '#00FF00' : 'transparent' })
@@ -260,7 +319,6 @@ export struct HomePage {
           }.width('100%')
 
           Row({ space: 16 }) {
-            // 🤖 动态判断昼夜，调用不同的头像
             Image(this.isNightMode ? $r('app.media.robot_avatar_night') : $r('app.media.robot_avatar_day'))
               .width(64)
               .height(64)
@@ -274,7 +332,6 @@ export struct HomePage {
               Text('全环境感知中枢已接管，正在默默守护您的居住健康。').fontSize(11).fontColor(this.isNightMode ? '#FFFFFF' : '#666').lineHeight(16).opacity(this.isNightMode ? 0.9 : 1)
 
               Row() {
-                // 🌟 修复：满电文字在白天模式下改为深绿色，并加粗提升辨识度
                 Text('⚡ 满电')
                   .fontSize(10)
                   .fontWeight(FontWeight.Bold)
@@ -287,7 +344,7 @@ export struct HomePage {
                   .opacity(this.isNightMode ? 0.8 : 1)
               }.width('100%').margin({ top: 4 })
             }.layoutWeight(1).alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Center)
-          }.width('100%').margin({ top: 12 }) // 控制头像和标题的紧凑距离
+          }.width('100%').margin({ top: 12 })
         }
         .layoutWeight(1).height('100%').padding(20)
         .backgroundColor(this.isNightMode ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.4)')

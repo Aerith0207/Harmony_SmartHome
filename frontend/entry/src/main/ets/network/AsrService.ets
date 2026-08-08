@@ -15,8 +15,8 @@ class BaiduAsrRequest {
 }
 
 export class AsrService {
-  private static readonly API_KEY = '';//API_KEY
-  private static readonly SECRET_KEY = '';//SECRET_KEY
+  private static readonly API_KEY = 'YKN5ynUHi03FDNkfwS6BCEAb';//API_KEY
+  private static readonly SECRET_KEY = 'P40lpgPM1psKdwjp9zoh9yEnM3BKHWmT';//SECRET_KEY
 
   private static accessToken: string = '';
   private static tokenExpireTime: number = 0;
