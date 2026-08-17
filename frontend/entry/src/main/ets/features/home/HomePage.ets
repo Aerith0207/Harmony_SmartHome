@@ -214,8 +214,6 @@ export struct HomePage {
         }.alignItems(HorizontalAlign.Start)
         Blank()
         Row({ space: 24 }) {
-          this.StatusIndicator('GATEWAY', 'ONLINE 🟢', '#00FF00')
-          this.StatusIndicator('SECURITY', 'AES-256 🔒', '#7B61FF')
           Text(this.currentTime).fontFamily('monospace').fontSize(36).fontColor(this.isNightMode ? '#FFF' : '#1A1A1A').fontWeight(FontWeight.Bold)
         }
       }.width('100%').padding({ bottom: 20 }).border({ width: { bottom: 1 }, color: this.isNightMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' })
