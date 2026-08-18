@@ -265,12 +265,17 @@ export struct ControlPage {
                 .shadow({ radius: this.isAcOn ? 60 : 0, color: this.isAcOn ? (this.isNightMode ? 'rgba(0, 229, 255, 0.4)' : 'rgba(0, 119, 153, 0.3)') : 'transparent' }).animation({ duration: 600, curve: Curve.FastOutSlowIn })
               Column() {
                 Text('TARGET').fontSize(10).fontColor(this.isNightMode ? '#8899AA' : '#888')
+
                 Text(`${this.targetTemp}℃`).fontSize(48).fontWeight(FontWeight.Bolder).fontColor(this.isAcOn ? (this.isNightMode ? '#00E5FF' : '#007799') : (this.isNightMode ? '#A0AAB5' : '#888')).margin({ top: 4, bottom: 4 }).animation({ duration: 400, curve: Curve.EaseInOut })
-                // 🌟 将圆环中央的状态展示中文化
+
+                // 🌟 核心修改：字号放大至14，增加字重，颜色改为清晰的深黑/高级灰
                 Text(this.isAcOn ?
                   `模式:${this.acMode===0?'自动':this.acMode===1?'制冷':this.acMode===2?'除湿':this.acMode===3?'送风':'制热'} | 风速:${this.acFan===0?'自动':this.acFan===1?'低风':this.acFan===2?'中风':'高风'}`
                   : '离线')
-                  .fontSize(10).fontColor(this.isAcOn ? '#00FF00' : '#FF1744').animation({ duration: 400 })
+                  .fontSize(14)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(this.isAcOn ? (this.isNightMode ? '#E0E0E0' : '#333333') : '#FF1744')
+                  .animation({ duration: 400 })
               }
             }.margin({ bottom: 20 })
 

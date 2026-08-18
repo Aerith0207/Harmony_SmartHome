@@ -231,7 +231,7 @@ export struct HealthPage {
           method: http.RequestMethod.POST,
           header: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer sk-1c1929d5402c4624b508358e4b396e90'
+            'Authorization': 'Bearer '
           },
           readTimeout: 15000,
           extraData: payloadStr
